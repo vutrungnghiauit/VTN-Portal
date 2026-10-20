@@ -1,12 +1,9 @@
 .timetable-page { display: grid; gap: 16px; }
 .timetable-page .workspace-title-row { margin-bottom: 0; }
-.timetable-header-actions, .timetable-import-actions { display: flex; align-items: center; gap: 8px; }
-.timetable-header-actions button, .timetable-import-actions > button:not(.workspace-primary) { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 12px; border: 1px solid #dce3ee; border-radius: 7px; background: #fff; color: #334155; cursor: pointer; white-space: nowrap; }
-.timetable-toolbar { display: flex; align-items: end; gap: 14px; flex-wrap: wrap; margin: 0; }
-.timetable-toolbar label { display: grid; gap: 6px; min-width: 220px; color: #475569; font-size: 12px; }
+.timetable-toolbar { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 14px; margin: 0; }
+.timetable-toolbar > .quick-filter-heading { grid-column: 1 / -1; }
+.timetable-toolbar label { display: grid; gap: 6px; min-width: 0; color: #475569; font-size: 12px; }
 .timetable-toolbar input, .timetable-toolbar select { min-height: 38px; padding: 0 10px; border: 1px solid #dce3ee; border-radius: 7px; background: #fff; color: #1e293b; }
-.timetable-search { flex: 1; }
-.timetable-import-actions { margin-left: auto; flex-wrap: wrap; }
 .timetable-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
 .timetable-summary article { min-width: 0; padding: 14px 16px; border: 1px solid #e5e9f0; border-radius: 9px; background: #fff; box-shadow: 0 2px 8px #1b2b4a06; }
 .timetable-summary span, .timetable-table-wrap td small { display: block; color: #748198; font-size: 12px; }
@@ -31,9 +28,30 @@
 .timetable-table-wrap td a { color: #2058a8; font-weight: 650; text-decoration: none; }
 .timetable-course small { color: #64748b !important; }
 .timetable-source-note { line-height: 1.6; }
-@media (max-width: 860px) { .timetable-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .timetable-toolbar label { min-width: 100%; } .timetable-import-actions { margin-left: 0; } .timetable-header-actions { align-self: flex-start; flex-wrap: wrap; } }
+@media (max-width: 860px) { .timetable-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .timetable-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .timetable-toolbar { grid-template-columns: 1fr; } }
+.spreadsheet-transfer-five-columns { display: grid; grid-template-columns: minmax(0, 1fr); }
+.spreadsheet-transfer-actions-five { display: grid; width: 100%; grid-template-columns: minmax(128px, 1.2fr) minmax(86px, .8fr) 42px minmax(108px, .95fr) minmax(180px, 1.55fr); gap: 8px; }
+.spreadsheet-transfer-actions-five > button,
+.spreadsheet-transfer-actions-five .spreadsheet-transfer-menu > summary { box-sizing: border-box; display: flex; width: 100%; min-width: 0; min-height: 44px; align-items: center; justify-content: center; gap: 6px; padding: 6px 8px; text-align: center; white-space: normal; font-size: 12px; }
+.spreadsheet-transfer-actions-five .spreadsheet-transfer-menu { position: relative; min-width: 0; }
+.spreadsheet-transfer-actions-five .spreadsheet-transfer-menu > summary { list-style: none; border: 1px solid #dce3ee; border-radius: 9px; background: #fff; color: #1e293b; cursor: pointer; }
+.spreadsheet-transfer-actions-five .spreadsheet-transfer-menu > summary::-webkit-details-marker { display: none; }
+.spreadsheet-transfer-actions-five .spreadsheet-transfer-menu > summary:hover { border-color: #2058a8; color: #2058a8; }
+.spreadsheet-transfer-actions-five .spreadsheet-transfer-menu > summary svg,
+.spreadsheet-transfer-actions-five > button svg { flex: 0 0 auto; }
+.spreadsheet-transfer-actions-five > .workspace-primary { border-color: var(--color-primary); background: var(--color-primary); color: #fff; }
+.spreadsheet-transfer-actions-five > .workspace-primary:hover:not(:disabled) { border-color: var(--color-primary-hover); background: var(--color-primary-hover); color: #fff; }
+.spreadsheet-transfer-actions-five .spreadsheet-transfer-menu > div { position: absolute; z-index: 10; top: calc(100% + 5px); left: 0; display: grid; min-width: max(100%, 220px); gap: 4px; padding: 6px; border: 1px solid #dce3ee; border-radius: 9px; background: #fff; box-shadow: 0 12px 26px #17255420; }
+.spreadsheet-transfer-actions-five .spreadsheet-transfer-menu > div > button { justify-content: flex-start; width: 100%; min-height: 36px; white-space: nowrap; }
+.spreadsheet-transfer-actions-five .spreadsheet-transfer-menu > div > button:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 620px) { .spreadsheet-transfer-actions-five { grid-template-columns: repeat(2, minmax(0, 1fr)); } .spreadsheet-transfer-actions-five > :first-child { grid-column: 1 / -1; } }
 .timetable-course-link { padding: 2px 4px; border: 0; border-radius: 4px; background: transparent; color: #2058a8; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
 .timetable-course-link:hover { color: #283898; background: #edf3ff; }
+.timetable-view-tabs { display: flex; gap: 4px; margin: 14px 0 0; border-bottom: 1px solid #dce5f0; }
+.timetable-view-tabs button { min-height: 38px; padding: 8px 13px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #64748b; font: inherit; font-size: 13px; cursor: pointer; }
+.timetable-view-tabs button:hover { color: #2058a8; }
+.timetable-view-tabs button.active { border-bottom-color: #2058a8; color: #2058a8; font-weight: 700; }
 .timetable-detail-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 20px; background: #17255480; }
 .timetable-detail-dialog { width: min(820px, 100%); max-height: min(86vh, 900px); overflow: auto; padding: 24px; border: 1px solid #dbe7f5; border-radius: 14px; background: #fff; box-shadow: 0 24px 70px #17255435; }
 .timetable-detail-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 17px; border-bottom: 1px solid #e5e9f0; }
