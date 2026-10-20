@@ -1,34 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Archive, Copy, Edit2, Eye, FileUp, KeyRound, Plus, Search, Trash2, X } from "lucide-react";
+import { Archive, Copy, Database, Edit2, Eye, FileUp, KeyRound, Plus, Search, Trash2, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import StudentForm from "../components/StudentForm";
 import { isSupabaseConfigured, supabase } from "../../../lib/supabase";
+import { SortableTableHeader } from "../../../components/SortableTableHeader";
+import { sortTableRows } from "../../../lib/table-sort";
 import { studentService } from "../student.service";
 import type { Student, StudentInput } from "../student.types";
 import "../students.css";
 import { formatDate } from "../../../lib/date-format";
-import { groupSemestersByAcademicYear, normalizeSemesterName, semesterIdentity } from "../../../lib/semester-groups";
+import { academicPeriodMatchesYear, academicYearFromSemester, formatSemesterLabel, groupAcademicPeriods, normalizeAcademicYear, normalizeSemesterName, semesterIdentity, semesterLabelIdentity, semesterMatchesSelection, uniqueAcademicYears } from "../../../lib/semester-groups";
 import { signInWithIdentifier } from "../../../lib/auth-login";
 import SpreadsheetTransferPanel, { type SpreadsheetValue } from "../../workspace/SpreadsheetTransferPanel";
-import type { ModuleField } from "../../workspace/module-definitions";
-import { workspaceService } from "../../workspace/workspace.service";
-import seedRows from "../../timetable/semester-schedules.json";
+import QuickFilterHeading from "../../workspace/QuickFilterHeading";
+import SearchableFilter from "../../../components/SearchableFilter";
+import { moduleByKey, type ModuleField } from "../../workspace/module-definitions";
+import { workspaceService, type WorkspaceRecord } from "../../workspace/workspace.service";
+import { sourceDataService } from "../../source-data/source-data.service";
 
 function normalizeSearch(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d").toLowerCase().trim();
 }
 
-function readableStudentNotes(notes: string) {
-  if (!notes.trim()) return "";
-  try {
-    const parsed = JSON.parse(notes) as { source?: string; details?: Record<string, string>; sourceData?: Record<string, string>; freeNote?: string };
-    if (!['imported-class-rosters', 'manual-student-entry'].includes(parsed.source ?? '')) return notes;
-    const explicitNote = parsed.freeNote?.trim() || parsed.details?.previousNotes?.trim();
-    if (explicitNote) return explicitNote;
-    const importedNote = Object.entries(parsed.sourceData ?? {}).find(([key]) => ['ghichu', 'notes', 'note'].includes(key.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z]/g, '')))?.[1];
-    return String(importedNote ?? '').trim();
-  } catch { return notes; }
-}
 function importedRosterData(notes: string) {
   try {
     const parsed = JSON.parse(notes) as { source?: string; details?: Record<string, string>; sourceData?: Record<string, string> };
@@ -36,17 +29,8 @@ function importedRosterData(notes: string) {
     return { details: parsed.details ?? {}, sourceData: parsed.sourceData ?? {} };
   } catch { return { details: {}, sourceData: {} }; }
 }
-function normalizeCourseCode(value: unknown) {
-  const normalized = String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("vi-VN");
-  // Registration exports may put the LHP code and its name in one cell.
-  return normalized.match(/^([a-z0-9._]+)(?:\s*[-–—]\s*|$)/i)?.[1] ?? normalized.replace(/\s+/g, "");
-}
-function normalizeAcademicYear(value: unknown) {
-  return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("vi-VN").replace(/^\s*(nh|nam hoc)\s*/i, "").replace(/\s+/g, "").trim();
-}
-function semesterNumber(value: unknown) {
-  const normalized = String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-  return normalized.match(/(?:hk|hoc\s*ky|hoc\s*ki|dot|semester)\s*(\d+)/i)?.[1] ?? (/^\d+$/.test(normalized) ? normalized : "");
+function normalizeStudentCode(value: unknown) {
+  return String(value ?? "").normalize("NFKC").replace(/\s+/g, "").toLocaleLowerCase("vi-VN");
 }
 function rosterField(student: Student, detailKey: string, ...sourceKeys: string[]) {
   const { details, sourceData } = importedRosterData(student.notes);
@@ -54,10 +38,6 @@ function rosterField(student: Student, detailKey: string, ...sourceKeys: string[
   const sourceValue = Object.entries(sourceData).find(([key]) => wanted.has(normalizeSearch(key)))?.[1] ?? "";
   return details[detailKey] || sourceValue || "";
 }
-function studentRegistrationLhpCode(student: Student) {
-  return normalizeCourseCode(rosterField(student, "", "courseClassCode", "ma lhp", "mã lhp", "ma lop hoc phan"));
-}
-
 function studentNameParts(student: Student) {
   const hoDem = rosterField(student, "", "ho dem", "họ đệm");
   const ten = rosterField(student, "", "ten", "tên");
@@ -66,6 +46,34 @@ function studentNameParts(student: Student) {
   return { hoDem: words.slice(0, -1).join(" "), ten: words.at(-1) ?? "" };
 }
 
+const gradeResultFields = moduleByKey.grades.fields.filter((field) => !field.hidden && field.key !== "title");
+
+function StudentGradeResultsPanel({ records, loading, error }: { records: WorkspaceRecord[]; loading: boolean; error: string }) {
+  const sortedRecords = [...records].sort((left, right) =>
+    String(left.data.courseName ?? "").localeCompare(String(right.data.courseName ?? ""), "vi", { sensitivity: "base", numeric: true })
+      || String(left.data.courseCode ?? "").localeCompare(String(right.data.courseCode ?? ""), "vi", { sensitivity: "base", numeric: true })
+      || String(left.data.semesterName ?? left.data.semester ?? "").localeCompare(String(right.data.semesterName ?? right.data.semester ?? ""), "vi", { sensitivity: "base", numeric: true }),
+  );
+
+  return <section className="student-course-history student-grade-results">
+    <div className="student-history-heading"><div><h3>Bảng kết quả học tập</h3><p>Các học phần được sắp xếp theo tên môn học.</p></div><span className="student-history-count">Tổng cộng: {sortedRecords.length} học phần</span></div>
+    {loading ? <p>Đang tải kết quả học tập…</p> : error ? <p role="alert" className="students-error">{error}</p> : sortedRecords.length ? <div className="student-grade-results-list">{sortedRecords.map((record, index) => <article className="student-grade-result-card" key={record.id}>
+      <h4>{String(record.data.courseName ?? "").trim() || String(record.data.courseCode ?? "").trim() || `Học phần ${index + 1}`}</h4>
+      <dl>{gradeResultFields.map((field) => {
+        const middle = String(record.data.studentMiddleName ?? "").trim();
+        const given = String(record.data.studentGivenName ?? "").trim();
+        const words = String(record.data.studentName ?? "").trim().split(/\s+/).filter(Boolean);
+        const value = field.key === "ordinal" ? index + 1
+          : field.key === "studentMiddleName" ? middle || words.slice(0, -1).join(" ")
+            : field.key === "studentGivenName" ? given || words.at(-1) || ""
+              : field.key === "lecturer" ? DEFAULT_LECTURER
+                : record.data[field.key];
+        const text = value === undefined || value === null ? "" : String(value);
+        return <div key={field.key}><dt>{field.label}</dt><dd>{text.trim() ? field.kind === "date" ? formatDate(text) : text : "—"}</dd></div>;
+      })}<div><dt>Cập nhật</dt><dd>{formatDate(record.updated_at)}</dd></div></dl>
+    </article>)}</div> : <p>Chưa tìm thấy kết quả học tập của sinh viên trong Sổ điểm.</p>}
+  </section>;
+}
 const studentTransferFields: ModuleField[] = [
   { key: "studentCode", label: "Mã sinh viên", required: true }, { key: "fullName", label: "Họ và tên", required: true },
   { key: "dateOfBirth", label: "Ngày sinh", kind: "date" }, { key: "className", label: "Lớp sinh hoạt" }, { key: "faculty", label: "Khoa / ngành" },
@@ -114,7 +122,23 @@ function studentSortValue(student: Student, key: Exclude<StudentSortKey, "sequen
   return "";
 }
 
-export default function StudentListPage({ canResetPasswords = false, canImport = false, canExport = false, canCreate = true, canUpdate = true, canDelete = true }: { canResetPasswords?: boolean; canImport?: boolean; canExport?: boolean; canCreate?: boolean; canUpdate?: boolean; canDelete?: boolean }) {
+type StudentCourseRecord = Record<string, string | number | null>;
+const studentCourseColumns = [
+  { key: "ordinal", label: "STT" }, { key: "courseCode", label: "Mã lớp học phần" }, { key: "courseName", label: "Môn học" },
+  { key: "className", label: "Lớp" }, { key: "semesterName", label: "Học kỳ" }, { key: "academicYear", label: "Năm học" },
+  { key: "credits", label: "Số tín chỉ" }, { key: "totalScore10", label: "ĐIỂM TỔNG KẾT HỆ 10" }, { key: "letterGrade", label: "ĐIỂM CHỮ" }, { key: "classification", label: "XẾP LOẠI" },
+];
+
+function StudentCourseHistoryTable({ courses }: { courses: StudentCourseRecord[] }) {
+  const [sortState, setSortState] = useState({ key: "ordinal", direction: "asc" as "asc" | "desc" });
+  const sortedCourses = sortTableRows(courses, sortState, (course, key, index) => key === "ordinal" ? index : course[key]);
+  function sortBy(key: string) {
+    setSortState((current) => current.key === key ? { key, direction: current.direction === "asc" ? "desc" : "asc" } : { key, direction: "asc" });
+  }
+  return <div className="student-course-table-wrap"><table><thead><tr>{studentCourseColumns.map((column) => <SortableTableHeader key={column.key} label={column.label} sortKey={column.key} sortState={sortState} onSort={sortBy} />)}</tr></thead><tbody>{sortedCourses.map((course, index) => <tr key={`${course.courseCode ?? ""}-${course.semesterName ?? ""}-${course.academicYear ?? ""}-${course.className ?? ""}-${index}`}><td>{index + 1}</td><td>{course.courseCode || "—"}</td><td className="student-history-course-name">{course.courseName || "—"}</td><td>{course.className || "—"}</td><td>{formatSemesterLabel(course.semesterName, course.academicYear) || "—"}</td><td>{course.academicYear || "—"}</td><td>{course.credits ?? "—"}</td><td className="student-history-score">{course.totalScore10 ?? "—"}</td><td className="student-history-score">{course.letterGrade || "—"}</td><td>{course.classification || "—"}</td></tr>)}</tbody></table></div>;
+}
+
+export default function StudentListPage({ canResetPasswords = false, canImport = false, canImportSourceData = false, canExport = false, canCreate = true, canUpdate = true, canDelete = true, tabPermissions = { profile: true, results: true, history: true } }: { canResetPasswords?: boolean; canImport?: boolean; canImportSourceData?: boolean; canExport?: boolean; canCreate?: boolean; canUpdate?: boolean; canDelete?: boolean; tabPermissions?: { profile: boolean; results: boolean; history: boolean } }) {
   const [students, setStudents] = useState<Student[]>([]);
   const [search, setSearch] = useState("");
   const [pageSize, setPageSize] = useState<"10" | "20" | "50" | "100" | "all">("10");
@@ -124,7 +148,19 @@ export default function StudentListPage({ canResetPasswords = false, canImport =
   const [selectedStudent, setSelectedStudent] = useState<Student>();
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(() => new Set());
   const [duplicateStudentCodes, setDuplicateStudentCodes] = useState<Array<{ code: string; students: Student[] }> | null>(null);
-  const [studentDetailTab, setStudentDetailTab] = useState<"profile" | "courses">("profile");
+  const [studentDetailTab, setStudentDetailTab] = useState<"profile" | "results" | "courses">("profile");
+  const visibleStudentDetailTabs = [
+    ...(tabPermissions.profile ? ["profile" as const] : []),
+    ...(tabPermissions.results ? ["results" as const] : []),
+    ...(tabPermissions.history ? ["courses" as const] : []),
+  ];
+  const activeStudentDetailTab = visibleStudentDetailTabs.includes(studentDetailTab) ? studentDetailTab : visibleStudentDetailTabs[0] ?? null;
+  function openStudentDetail(student: Student) {
+    if (!visibleStudentDetailTabs.length) return;
+    setSelectedStudent(student);
+    setStudentDetailTab(visibleStudentDetailTabs[0]);
+  }
+  const [studentGradeRecords, setStudentGradeRecords] = useState<WorkspaceRecord[]>([]);
   const [lecturerCourses, setLecturerCourses] = useState<Array<Record<string, string | number | null>>>([]);
   const [coursesLoading, setCoursesLoading] = useState(false);
   const [coursesError, setCoursesError] = useState("");
@@ -149,6 +185,7 @@ export default function StudentListPage({ canResetPasswords = false, canImport =
   const [majorFilter, setMajorFilter] = useState("all");
   const rosterInputRef = useRef<HTMLInputElement>(null);
   const [rosterImportBusy, setRosterImportBusy] = useState(false);
+  const [sourceDataImportBusy, setSourceDataImportBusy] = useState(false);
 
   const loadStudents = useCallback(async () => {
     setLoading(true);
@@ -182,81 +219,36 @@ export default function StudentListPage({ canResetPasswords = false, canImport =
   }
 
   useEffect(() => { void loadStudents(); }, [loadStudents]);
+  useEffect(() => {
+    if (selectedStudent && activeStudentDetailTab !== studentDetailTab) setStudentDetailTab(activeStudentDetailTab ?? "profile");
+  }, [selectedStudent, activeStudentDetailTab, studentDetailTab]);
   useEffect(() => { const update = (event: Event) => { const value = (event as CustomEvent<string>).detail || "all"; setSemesterFilter(value === "all" ? value : normalizeSemesterName(value)); }; window.addEventListener("vtn-semester-filter-changed", update); return () => window.removeEventListener("vtn-semester-filter-changed", update); }, []);
   useEffect(() => {
-    if (!selectedStudent) return;
+    if (!selectedStudent || !["results", "courses"].includes(activeStudentDetailTab ?? "")) {
+      setStudentGradeRecords([]); setLecturerCourses([]); setCoursesLoading(false); setCoursesError("");
+      return;
+    }
     let active = true;
     setCoursesLoading(true);
     setCoursesError("");
-    // Anchor the history to the registration represented by the open profile.
-    // Duplicate MSSV rows for other LHPs must not leak into this student's history.
-    const selectedCode = normalizeSearch(selectedStudent.studentCode);
-    const sameCodeRows = students.filter((item) => normalizeSearch(item.studentCode) === selectedCode);
-    const hasDuplicateStudentCodes = sameCodeRows.length > 1;
-    const selectedLhpCode = studentRegistrationLhpCode(selectedStudent);
-    const matchingEnrollments = hasDuplicateStudentCodes
-      ? selectedLhpCode
-        ? sameCodeRows.filter((item) => studentRegistrationLhpCode(item) === selectedLhpCode)
-        : sameCodeRows
-      : [selectedStudent];
-    if (!matchingEnrollments.some((item) => item.id === selectedStudent.id)) matchingEnrollments.push(selectedStudent);
-    const hasDuplicateRegistrationRows = hasDuplicateStudentCodes;
-    void workspaceService.allRecords().then((allRecords) => {
-      const timetableRecords = allRecords.filter((record) => record.module_key === "timetables");
-      const activeRecords = timetableRecords.filter((record) => !record.deleted_at);
-      const savedById = new Map(activeRecords.map((record) => [record.external_id || String(record.data.sourceId ?? ""), record]));
-      const deletedIds = new Set(timetableRecords.filter((record) => record.deleted_at).map((record) => record.external_id || String(record.data.sourceId ?? "")));
-      const seededIds = new Set(seedRows.map((row) => row.id));
-      const scheduleRows: Array<Record<string, unknown>> = [
-        ...seedRows.filter((row) => !deletedIds.has(row.id)).map((row) => savedById.get(row.id)?.data ?? row),
-        ...activeRecords.filter((record) => !seededIds.has(record.external_id || String(record.data.sourceId ?? ""))).map((record) => record.data),
-      ];
+    setStudentGradeRecords([]);
+    setLecturerCourses([]);
+    const studentCode = normalizeStudentCode(selectedStudent.studentCode);
+    void workspaceService.list("grades").then((gradeRecords) => {
       if (!active) return;
-      const enrollmentKeys = matchingEnrollments.map((item) => {
-        const { sourceData, details } = importedRosterData(item.notes);
-        const sourceValue = (...keys: string[]) => Object.entries(sourceData).find(([key]) => keys.some((candidate) => normalizeSearch(key) === normalizeSearch(candidate)))?.[1] ?? "";
-        const courseCode = sourceValue("ma lhp", "ma lop hoc phan", "courseClassCode", "courseCode", "subjectCode")
-          || rosterField(item, "", "courseClassCode", "ma lhp", "ma lop hoc phan", "courseCode", "subjectCode");
-        const subjectName = sourceValue("ten hoc phan", "ten lhp", "courseName", "subjectName", "sourceCourse", "mon hoc phan")
-          || rosterField(item, "", "courseName", "subjectName", "sourceCourse", "ten hoc phan", "ten lhp", "mon hoc phan");
-        const year = sourceValue("sourceAcademicYear", "academicYear", "nam hoc") || rosterField(item, "", "sourceAcademicYear", "academicYear", "nam hoc");
-        const semester = sourceValue("sourceTerm", "semester", "dot") || rosterField(item, "", "sourceTerm", "semester", "dot") || item.semesterName;
-        const registrationStatus = sourceValue("trang thai dang ky lhp", "registrationStatus") || details.registrationStatus || "";
-        const studentStatus = sourceValue("trang thai sv", "trang thai hoc tap", "academicStatus") || item.academicStatus || "";
-        return { courseCode: normalizeCourseCode(courseCode), subjectName: normalizeSearch(subjectName), year: normalizeAcademicYear(year), semester: normalizeSearch(semester), yearDisplay: year, semesterDisplay: semester, registrationStatus, studentStatus };
-      }).filter((entry) => entry.courseCode || (!hasDuplicateRegistrationRows && entry.subjectName));
-      const matchesEnrollment = (data: Record<string, unknown>, entry: typeof enrollmentKeys[number]) => {
-        const scheduleCodes = [data.courseClassCode, data.courseCode, data.lhpCode].map(normalizeCourseCode).filter(Boolean);
-        const year = normalizeAcademicYear(data.academicYear);
-        const termNumber = semesterNumber(data.semesterNumber ?? data.semesterName);
-        const entryTermNumber = semesterNumber(entry.semester);
-        if (entry.year && year && entry.year !== year) return false;
-        if (entryTermNumber && termNumber && entryTermNumber !== termNumber) return false;
-        // Duplicate MSSV rows are individual registrations and must use their
-        // exact LHP code. For a single profile with no code, use its recorded
-        // course name as the only available registration detail.
-        if (entry.courseCode && scheduleCodes.includes(entry.courseCode)) return true;
-        if (hasDuplicateRegistrationRows || !entry.subjectName) return false;
-        const scheduleName = normalizeSearch(String(data.subjectName ?? data.title ?? data.courseName ?? ""));
-        return Boolean(scheduleName && (scheduleName === entry.subjectName || scheduleName.includes(entry.subjectName) || entry.subjectName.includes(scheduleName)));
-      };
-      const rows = scheduleRows.filter((data) => {
-        const lecturer = normalizeSearch(String(data.lecturer ?? ""));
-        if (!lecturer.includes("01011090") && !lecturer.includes("vu trung nghia")) return false;
-        return enrollmentKeys.some((entry) => matchesEnrollment(data, entry));
-      });
-      const unique = [...new Map(rows.map((row) => {
-        const matchingEntries = enrollmentKeys.filter((entry) => matchesEnrollment(row, entry));
-        const occurrences = matchingEntries.length;
-        const distinctValues = (values: Array<string | undefined>) => [...new Set(values.map((value) => String(value ?? "").trim()).filter(Boolean))].join(", ");
-        return [`${row.courseCode}|${row.semesterName}|${row.classCode}`, { courseCode: String(row.courseCode ?? ""), subjectName: String(row.subjectName ?? row.title ?? ""), semesterName: String(row.semesterName ?? ""), classCode: String(row.classCode ?? ""), academicYear: String(row.academicYear ?? ""), subjectCode: String(row.subjectCode ?? row.subject_code ?? row.courseSubjectCode ?? ""), credits: String(row.credits ?? row.credit ?? row.creditCount ?? ""), score: String(row.score ?? row.grade ?? ""), enrollmentOccurrences: occurrences, enrollmentTerm: matchingEntries[0]?.semesterDisplay ?? "", enrollmentYear: matchingEntries[0]?.yearDisplay ?? "", registrationStatus: distinctValues(matchingEntries.map((entry) => entry.registrationStatus)), studentStatus: distinctValues(matchingEntries.map((entry) => entry.studentStatus)) }];
-      })).values()];
-      setLecturerCourses(unique);
+      const studentRecords = gradeRecords.filter((record) => normalizeStudentCode(record.data.studentCode) === studentCode);
+      setStudentGradeRecords(studentRecords);
+      const rows = studentRecords.filter((record) => {
+          const lecturer = normalizeSearch(String(record.data.lecturer ?? ""));
+          return !lecturer || lecturer.includes("01011090") || lecturer.includes("vu trung nghia");
+        })
+        .map((record) => record.data);
+      setLecturerCourses(rows);
     }).catch((loadError) => {
       if (active) setCoursesError(loadError instanceof Error ? loadError.message : "Không tải được học phần.");
     }).finally(() => { if (active) setCoursesLoading(false); });
     return () => { active = false; };
-  }, [selectedStudent, students]);
+  }, [selectedStudent, activeStudentDetailTab]);
 
   async function handleSave(input: StudentInput) {
     setBusy(true);
@@ -288,11 +280,11 @@ export default function StudentListPage({ canResetPasswords = false, canImport =
     setMessage(`Đã nhập ${added + updated} hồ sơ (${added} thêm mới, ${updated} cập nhật).`); await loadStudents();
   }
 
-  async function importClassRosters(files: FileList | null) {
+  async function importClassRosters(files: FileList | File[] | null, archiveFiles = true) {
     if (!files?.length) return;
     setRosterImportBusy(true); setError(""); setMessage("");
     try {
-      const records: Array<{ input: StudentInput; details: Record<string, string>; sourceData: Record<string, string>; registrationKey: string }> = [];
+      const records: Array<{ input: StudentInput; details: Record<string, string>; sourceData: Record<string, string>; registrationKey: string; fileName: string }> = [];
       let rosterFiles = 0;
       const clean = (value: unknown) => String(value ?? "").trim();
       const toDate = (value: unknown) => {
@@ -305,35 +297,46 @@ export default function StudentListPage({ canResetPasswords = false, canImport =
         const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: false });
         for (const sheetName of workbook.SheetNames) {
           const matrix = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], { header: 1, defval: "", raw: false });
-          const headerIndex = matrix.findIndex((row) => row.some((cell) => normalizeSearch(clean(cell)) === "ma sv") && row.some((cell) => normalizeSearch(clean(cell)) === "ho dem"));
+          const headerIndex = matrix.findIndex((row) => {
+            const normalized = row.map((cell) => normalizeSearch(clean(cell)).replace(/\s+/g, ""));
+            const hasStudentCode = normalized.some((cell) => ["masv", "mssv", "masinhvien", "studentcode"].includes(cell));
+            const hasStudentName = normalized.some((cell) => ["hodem", "ten", "hovaten", "hoten", "fullname", "studentname"].includes(cell));
+            return hasStudentCode && hasStudentName;
+          });
           if (headerIndex < 0) continue;
           const sourceHeaders = matrix[headerIndex].map(clean);
           const headers = sourceHeaders.map(normalizeSearch);
           const indexOf = (...names: string[]) => headers.findIndex((header) => names.includes(header));
           const value = (row: unknown[], ...names: string[]) => { const index = indexOf(...names); return index < 0 ? "" : clean(row[index]); };
           const meta = (rowIndex: number, prefix: string) => (matrix[rowIndex] ?? []).map(clean).find((cell) => normalizeSearch(cell).startsWith(prefix))?.split(":").slice(1).join(":").trim() ?? "";
-          const classMeta = meta(4, "lop hoc"); const courseMeta = meta(5, "mon hoc phan"); const semester = meta(4, "dot");
+          const classMeta = meta(4, "lop hoc"); const courseMeta = meta(5, "mon hoc phan"); const semester = meta(4, "dot") || value(matrix[headerIndex], "semestername", "semester", "term", "dot");
           const [courseCode = "", ...courseNameParts] = courseMeta.split(" - "); const [courseClassCode = "", ...classNameParts] = classMeta.split(" - ");
-          const faculty = meta(6, "nganh"); const major = meta(7, "chuyen nganh"); rosterFiles++;
+          const faculty = meta(6, "nganh") || value(matrix[headerIndex], "faculty", "khoa"); const major = meta(7, "chuyen nganh") || value(matrix[headerIndex], "major", "chuyen nganh", "nganh"); rosterFiles++;
           for (let offset = 0; offset < matrix.length - headerIndex - 1; offset++) {
             const row = matrix[headerIndex + 1 + offset];
-            const studentCode = value(row, "ma sv", "mssv"); const fullName = [value(row, "ho dem"), value(row, "ten")].filter(Boolean).join(" ");
+            const studentCode = value(row, "ma sv", "mssv", "ma sinh vien", "studentcode", "student code"); const fullName = [value(row, "ho dem", "studentmiddlename"), value(row, "ten", "studentgivenname")].filter(Boolean).join(" ") || value(row, "ho va ten", "ho ten", "fullname", "full name", "studentname", "student name");
             if (!studentCode || !fullName) continue;
-            const email = value(row, "email"); const schoolEmail = value(row, "mail truong", "email truong");
-            const phone = value(row, "dien thoai", "so dien thoai"); const studentStatus = value(row, "trang thai sv", "trang thai hoc tap");
+            const email = value(row, "email", "student email"); const schoolEmail = value(row, "mail truong", "email truong", "school email");
+            const phone = value(row, "dien thoai", "so dien thoai", "phone", "student phone"); const studentStatus = value(row, "trang thai sv", "trang thai hoc tap", "trang thai hoc vu", "academic status");
             const details = { gender: value(row, "gioi tinh"), citizenId: value(row, "so cccd", "cccd"), birthplace: value(row, "noi sinh"), schoolEmail, registrationStatus: value(row, "trang thai dang ky lhp"), tuitionStatus: value(row, "hoc phi"), registrationDate: toDate(value(row, "ngay dang ky")) || value(row, "ngay dang ky"), registrationSource: value(row, "nguon dang ky"), registeredBy: value(row, "ho ten nguoi dang ky"), academicMajor: faculty, major };
             const sourceData = Object.fromEntries(sourceHeaders.map((header, column) => [header || `Column ${column + 1}`, clean(row[column])]));
             const registrationKey = `${semester}::${file.name}::${sheetName}::${headerIndex + 2 + offset}`;
             records.push({
-              input: { studentCode, fullName, dateOfBirth: toDate(value(row, "ngay sinh")), className: value(row, "ma lop chu", "lop sinh hoat") || classNameParts.join(" - "), faculty: faculty || major, semesterName: semester, academicStatus: studentStatus || "Đang học", email: email || schoolEmail, phone, notes: "" },
+              input: { studentCode, fullName, dateOfBirth: toDate(value(row, "ngay sinh", "dateofbirth", "date of birth", "dob")), className: value(row, "ma lop chu", "lop sinh hoat", "class name", "classname", "class") || classNameParts.join(" - "), faculty: faculty || major, semesterName: semester, academicStatus: studentStatus || "Đang học", email: email || schoolEmail, phone, notes: "" },
               details: { ...details, academicMajor: faculty, major, educationLevel: meta(6, "bac dao tao"), trainingType: meta(7, "loai dao tao") },
               sourceData: { ...sourceData, sourceClass: classMeta, sourceTerm: semester, sourceCourse: courseMeta, sourceAcademicYear: meta(5, "nam hoc"), sourceFaculty: faculty, sourceEducationLevel: meta(6, "bac dao tao"), sourceMajor: major, sourceTrainingType: meta(7, "loai dao tao"), semester, academicYear: semester.replace(/^HK\s*\d+\s*/i, "").replace(/^NH\s*/i, ""), courseCode, courseName: courseNameParts.join(" - "), courseClassCode, courseClassName: classNameParts.join(" - "), faculty, major },
-              registrationKey,
+              registrationKey, fileName: file.name,
             });
           }
         }
       }
       if (!records.length) throw new Error("Không tìm thấy dòng sinh viên. Chọn danh sách lớp học phần có các cột Mã SV, Họ đệm và Tên.");
+      if (archiveFiles) {
+        for (const file of Array.from(files)) {
+          const sourceRows = records.filter((record) => record.fileName === file.name).map((record) => record.sourceData);
+          await sourceDataService.archiveImportedFile(file, "student-records", sourceRows);
+        }
+      }
       const payload = records.map(({ input, details, sourceData, registrationKey }) => ({ ...input, dateOfBirth: input.dateOfBirth || null, sourceRegistrationKey: registrationKey, notes: JSON.stringify({ source: "imported-class-rosters", details, sourceData }) }));
       const batchSize = 500; let inserted = 0; let updated = 0;
       for (let offset = 0; offset < payload.length; offset += batchSize) {
@@ -351,6 +354,66 @@ export default function StudentListPage({ canResetPasswords = false, canImport =
       await loadStudents();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Không thể nhập danh sách lớp học phần."); }
     finally { setRosterImportBusy(false); if (rosterInputRef.current) rosterInputRef.current.value = ""; }
+  }
+
+  async function importStudentSourceData() {
+    if (!canImport || !canImportSourceData || !isSupabaseConfigured || sourceDataImportBusy) return;
+    setSourceDataImportBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const sourceRows = await sourceDataService.list("student-records");
+      if (sourceRows.length) {
+        const importedRows = sourceRows.map((record) => {
+          const row = Object.fromEntries(Object.entries(record.data).filter(([key]) => !key.startsWith("_source")));
+          const read = (...keys: string[]) => {
+            const wanted = new Set(keys.map((key) => normalizeSearch(key).replace(/\s+/g, "")));
+            return Object.entries(row).find(([key, value]) => wanted.has(normalizeSearch(key).replace(/\s+/g, "")) && String(value ?? "").trim())?.[1]?.toString().trim() ?? "";
+          };
+          const dateValue = read("dateOfBirth", "ngay sinh", "dob");
+          const dateParts = dateValue.match(/^(\d{1,2})[/.](\d{1,2})[/.](\d{4})$/);
+          const dateOfBirth = dateParts
+            ? `${dateParts[3]}-${dateParts[2].padStart(2, "0")}-${dateParts[1].padStart(2, "0")}`
+            : /^\d+(\.\d+)?$/.test(dateValue) && Number(dateValue) > 1000
+              ? (() => { const date = XLSX.SSF.parse_date_code(Number(dateValue)); return date?.y ? `${date.y}-${String(date.m).padStart(2, "0")}-${String(date.d).padStart(2, "0")}` : dateValue; })()
+              : dateValue;
+          const fullName = read("fullName", "ho va ten", "ho ten", "studentName") || [read("ho dem", "middleName"), read("ten", "givenName")].filter(Boolean).join(" ");
+          const notes = read("notes", "ghi chu") || JSON.stringify({ source: "source-data", sourceData: row });
+          return {
+            studentCode: read("studentCode", "ma sinh vien", "ma sv", "mssv"), fullName, dateOfBirth,
+            className: read("className", "lop sinh hoat", "ma lop chu", "lop"), faculty: read("faculty", "khoa", "nganh", "academicMajor"),
+            semesterName: read("semesterName", "semester", "sourceTerm", "term", "dot"), academicStatus: read("academicStatus", "trang thai hoc vu", "trang thai sv", "trang thai hoc tap") || "Đang học",
+            email: read("email", "mail truong", "email truong"), phone: read("phone", "dien thoai", "so dien thoai"), notes,
+          };
+        });
+        await importStudents(importedRows);
+        return;
+      }
+
+      const storedFiles = await sourceDataService.listFiles();
+      const rosterFiles = storedFiles.filter((file) => {
+        if (file.deleted_at) return false;
+        try {
+          const classifications = JSON.parse(String(file.data.extractedClassifications ?? "[]")) as Array<{ categoryKey?: string }>;
+          return classifications.some((item) => item.categoryKey === "student-records");
+        } catch { return false; }
+      });
+      if (!rosterFiles.length) throw new Error("Chưa có dữ liệu sinh viên trong Dữ liệu nguồn. Hãy nhập tệp danh sách lớp học phần trước.");
+      const files: File[] = [];
+      for (const storedFile of rosterFiles) {
+        const fileName = String(storedFile.data.fileName ?? "").trim();
+        const storagePath = String(storedFile.data.storagePath ?? "").trim();
+        if (!fileName || !storagePath) continue;
+        const blob = await sourceDataService.downloadOriginalFile(storagePath);
+        files.push(new File([blob], fileName, { type: String(storedFile.data.contentType ?? blob.type ?? "application/octet-stream") }));
+      }
+      if (!files.length) throw new Error("Không tìm thấy tệp danh sách sinh viên có thể nhập.");
+      await importClassRosters(files, false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Không thể lấy dữ liệu sinh viên từ nguồn.");
+    } finally {
+      setSourceDataImportBusy(false);
+    }
   }
 
   async function handleTrash(student: Student) {
@@ -431,8 +494,13 @@ export default function StudentListPage({ canResetPasswords = false, canImport =
       majors: distinct((student) => rosterField(student, "academicMajor", "sourceFaculty", "Ngành") || student.faculty),
     };
   }, [students]);
-  const studentSemesterOptions = [...new Map([...filterOptions.semesters, ...(semesterFilter === "all" ? [] : [semesterFilter])].map(normalizeSemesterName).filter(Boolean).map((name) => [semesterIdentity(name), name])).values()];
-  const semesterGroups = groupSemestersByAcademicYear(studentSemesterOptions);
+  const studentAcademicPeriods = useMemo(() => students.map((student) => ({
+    academicYear: rosterField(student, "", "sourceAcademicYear", "Năm học", "academicYear") || academicYearFromSemester(rosterField(student, "", "sourceTerm", "Đợt", "semester") || student.semesterName),
+    semesterName: rosterField(student, "", "sourceTerm", "Đợt", "semester") || student.semesterName,
+  })).filter((period) => period.semesterName), [students]);
+  const semesterGroups = groupAcademicPeriods(studentAcademicPeriods);
+  const visibleSemesterGroups = academicYearFilter === "all" ? semesterGroups : semesterGroups.filter((group) => normalizeAcademicYear(group.academicYear) === normalizeAcademicYear(academicYearFilter));
+  const academicYearOptions = uniqueAcademicYears([...filterOptions.academicYears, ...studentAcademicPeriods.map((period) => period.academicYear)]);
 
   const filteredStudents = useMemo(() => {
     const keyword = normalizeSearch(search);
@@ -448,14 +516,14 @@ export default function StudentListPage({ canResetPasswords = false, canImport =
       const major = rosterField(student, "academicMajor", "sourceFaculty", "Ngành") || student.faculty;
       const registrationStatus = rosterField(student, "registrationStatus", "trang thai dang ky lhp");
       return (!keyword || searchable.includes(keyword))
-        && (semesterFilter === "all" || semesterIdentity(term) === semesterIdentity(semesterFilter))
+        && (semesterFilter === "all" || semesterMatchesSelection(term, year, semesterFilter))
         && (academicStatusFilter === "all" || student.academicStatus === academicStatusFilter)
         && (registrationStatusFilter === "all" || registrationStatus === registrationStatusFilter)
-        && (academicYearFilter === "all" || year === academicYearFilter)
+        && (academicYearFilter === "all" || academicPeriodMatchesYear(term, year, academicYearFilter, studentAcademicPeriods))
         && (classFilter === "all" || className === classFilter)
         && (majorFilter === "all" || major === majorFilter);
     });
-  }, [students, search, semesterFilter, academicStatusFilter, registrationStatusFilter, academicYearFilter, classFilter, majorFilter]);
+  }, [students, search, semesterFilter, academicStatusFilter, registrationStatusFilter, academicYearFilter, classFilter, majorFilter, studentAcademicPeriods]);
 
   const sortedStudents = useMemo(() => {
     const originalOrder = new Map(students.map((student, index) => [student.id, index]));
@@ -479,14 +547,27 @@ export default function StudentListPage({ canResetPasswords = false, canImport =
   const safePage = Math.min(currentPage, pageCount);
   const pageStartIndex = pageSize === "all" ? 0 : (safePage - 1) * Number(pageSize);
   const pageStudents = pageSize === "all" ? sortedStudents : sortedStudents.slice(pageStartIndex, pageStartIndex + Number(pageSize));
-  const allVisibleSelected = pageStudents.length > 0 && pageStudents.every((student) => selectedStudentIds.has(student.id));
+  const allVisibleSelected = filteredStudents.length > 0 && filteredStudents.every((student) => selectedStudentIds.has(student.id));
+  const someVisibleSelected = filteredStudents.some((student) => selectedStudentIds.has(student.id));
   useEffect(() => { setCurrentPage((page) => Math.min(page, pageCount)); }, [pageCount]);
   useEffect(() => { setCurrentPage(1); }, [search, semesterFilter, academicStatusFilter, registrationStatusFilter, academicYearFilter, classFilter, majorFilter]);
+  useEffect(() => { setSelectedStudentIds(new Set()); }, [search, semesterFilter, academicStatusFilter, registrationStatusFilter, academicYearFilter, classFilter, majorFilter]);
 
   function clearStudentFilters() {
     setSearch(""); setSemesterFilter("all"); setAcademicStatusFilter("all"); setRegistrationStatusFilter("all"); setAcademicYearFilter("all"); setClassFilter("all"); setMajorFilter("all");
     localStorage.setItem("vtn-active-semester", "all");
     window.dispatchEvent(new CustomEvent("vtn-semester-filter-changed", { detail: "all" }));
+  }
+
+  function chooseAcademicYear(nextYear: string) {
+    setAcademicYearFilter(nextYear);
+    const validSemesters = nextYear === "all" ? [] : semesterGroups.find((group) => normalizeAcademicYear(group.academicYear) === normalizeAcademicYear(nextYear))?.semesters ?? [];
+    const selectedSemesterYear = academicYearFromSemester(semesterFilter);
+    if (semesterFilter !== "all" && nextYear !== "all" && (!validSemesters.some((item) => semesterLabelIdentity(item) === semesterLabelIdentity(semesterFilter)) || (selectedSemesterYear && normalizeAcademicYear(selectedSemesterYear) !== normalizeAcademicYear(nextYear)))) {
+      setSemesterFilter("all");
+      localStorage.setItem("vtn-active-semester", "all");
+      window.dispatchEvent(new CustomEvent("vtn-semester-filter-changed", { detail: "all" }));
+    }
   }
 
   function checkDuplicateStudentCodes() {
@@ -513,7 +594,10 @@ export default function StudentListPage({ canResetPasswords = false, canImport =
         <div className="students-breadcrumb">Quản lý <span>/</span> Sinh viên</div>
         <div className="students-header">
           <div><h1>Quản lý sinh viên</h1><p>Quản lý hồ sơ và thông tin sinh viên của bạn.</p></div>
-          {canCreate && <button className="students-primary" type="button" disabled={!isSupabaseConfigured || busy} onClick={() => { setEditingStudent(undefined); setShowForm(true); setMessage(""); }}><Plus size={17} /> Thêm sinh viên</button>}
+          {(canCreate || canImportSourceData) && <div className="students-header-actions">
+            {canImportSourceData && <button className="students-secondary" type="button" disabled={!canImport || !isSupabaseConfigured || sourceDataImportBusy || rosterImportBusy || busy} onClick={() => void importStudentSourceData()}><Database size={16} />{sourceDataImportBusy || rosterImportBusy ? "Đang lấy dữ liệu…" : "Lấy dữ liệu nguồn"}</button>}
+            {canCreate && <button className="students-primary" type="button" disabled={!isSupabaseConfigured || busy} onClick={() => { setEditingStudent(undefined); setShowForm(true); setMessage(""); }}><Plus size={17} /> Thêm sinh viên</button>}
+          </div>}
         </div>
 
         {!isSupabaseConfigured && <div className="students-notice" role="alert">Chưa cấu hình Supabase. Tạo <code>.env.local</code> với <code>VITE_SUPABASE_URL</code> và <code>VITE_SUPABASE_ANON_KEY</code>, sau đó khởi động lại ứng dụng.</div>}
@@ -522,31 +606,49 @@ export default function StudentListPage({ canResetPasswords = false, canImport =
 
         {needsLogin && <form className="student-form students-login" onSubmit={handleLogin}><h2>Đăng nhập</h2><p>Dùng tên tài khoản, mã sinh viên hoặc email và mật khẩu.</p><div className="student-form-grid"><label>Tên đăng nhập hoặc MSSV<input type="text" autoComplete="username" required value={identifier} onChange={(event) => setIdentifier(event.target.value)} /></label><label>Mật khẩu<input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></label></div><button className="students-primary" type="submit" disabled={busy}>Đăng nhập</button></form>}
 
-        {showForm && <StudentForm key={editingStudent?.id ?? "new"} student={editingStudent} onSave={handleSave} onCancel={() => { setShowForm(false); setEditingStudent(undefined); }} />}
+        {showForm && <div className="students-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) { setShowForm(false); setEditingStudent(undefined); } }}><div className="students-edit-modal" role="dialog" aria-modal="true" aria-label={editingStudent ? "Chỉnh sửa hồ sơ sinh viên" : "Thêm sinh viên"}><button type="button" className="students-edit-close" aria-label="Đóng biểu mẫu" disabled={busy} onClick={() => { setShowForm(false); setEditingStudent(undefined); }}><X size={19} /></button><StudentForm key={editingStudent?.id ?? "new"} student={editingStudent} onSave={handleSave} onCancel={() => { setShowForm(false); setEditingStudent(undefined); }} /></div></div>}
 
-        <div className="students-toolbar"><div className="students-search-wrap"><Search size={17} /><input aria-label="Tìm nhanh hồ sơ sinh viên" placeholder="Tìm MSSV, họ tên, điện thoại, email, CCCD, lớp, môn…" value={search} onChange={(event) => setSearch(event.target.value)} /></div><span>{loading ? "Đang tải..." : `${filteredStudents.length.toLocaleString("vi-VN")} / ${students.length.toLocaleString("vi-VN")} sinh viên`}</span><button type="button" disabled={loading || !students.length} onClick={checkDuplicateStudentCodes}><Search size={15} />Kiểm tra trùng mã SV</button></div>
-        {duplicateStudentCodes !== null && <section className="students-duplicate-report" role="status" aria-live="polite"><div><strong>{duplicateStudentCodes.length ? `Tìm thấy ${duplicateStudentCodes.length} mã sinh viên bị trùng` : "Không tìm thấy mã sinh viên bị trùng"}</strong><button type="button" onClick={() => setDuplicateStudentCodes(null)}>Đóng</button></div>{duplicateStudentCodes.length > 0 && <ul>{duplicateStudentCodes.map(({ code, students: matches }) => <li key={code}><strong>{code}</strong><span>{matches.length} hồ sơ: {matches.map((student) => student.fullName).join(", ")}</span></li>)}</ul>}</section>}
+        
+        
         <div className="students-filterbar" aria-label="Bộ lọc sinh viên">
-          <label>Học kỳ<select value={semesterFilter} onChange={(event) => { const rawValue = event.target.value; const value = rawValue === "all" ? rawValue : normalizeSemesterName(rawValue); setSemesterFilter(value); localStorage.setItem("vtn-active-semester", value); window.dispatchEvent(new CustomEvent("vtn-semester-filter-changed", { detail: value })); }}><option value="all">Tất cả học kỳ</option>{semesterGroups.map((group) => <optgroup key={group.academicYear} label={group.academicYear === "Khác" ? "Năm học chưa xác định" : `Năm học ${group.academicYear}`}>{group.semesters.map((item) => <option key={item} value={item}>{item}</option>)}</optgroup>)}</select></label>
-          <label>Năm học<select value={academicYearFilter} onChange={(event) => setAcademicYearFilter(event.target.value)}><option value="all">Tất cả năm học</option>{filterOptions.academicYears.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-          <label>Trạng thái SV<select value={academicStatusFilter} onChange={(event) => setAcademicStatusFilter(event.target.value)}><option value="all">Tất cả trạng thái</option>{filterOptions.academicStatuses.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-          <label>Trạng thái đăng ký<select value={registrationStatusFilter} onChange={(event) => setRegistrationStatusFilter(event.target.value)}><option value="all">Tất cả đăng ký</option>{filterOptions.registrationStatuses.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-          <label>Lớp học<select value={classFilter} onChange={(event) => setClassFilter(event.target.value)}><option value="all">Tất cả lớp</option>{filterOptions.classes.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-          <label>Ngành<select value={majorFilter} onChange={(event) => setMajorFilter(event.target.value)}><option value="all">Tất cả ngành</option>{filterOptions.majors.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-          <button type="button" onClick={clearStudentFilters} disabled={!search && semesterFilter === "all" && academicStatusFilter === "all" && registrationStatusFilter === "all" && academicYearFilter === "all" && classFilter === "all" && majorFilter === "all"}>Xóa bộ lọc</button>
+          <QuickFilterHeading onClear={clearStudentFilters} clearDisabled={!search && semesterFilter === "all" && academicStatusFilter === "all" && registrationStatusFilter === "all" && academicYearFilter === "all" && classFilter === "all" && majorFilter === "all"} />
+          <label>Năm học<SearchableFilter value={academicYearFilter} allValue="all" allLabel="Tất cả năm học" options={academicYearOptions.map((item) => ({ value: item, label: item }))} onChange={chooseAcademicYear} /></label>
+          <label>Học kỳ<SearchableFilter value={semesterFilter} allValue="all" allLabel="Tất cả học kỳ" options={[...(semesterFilter !== "all" && !visibleSemesterGroups.some((group) => group.semesters.includes(semesterFilter)) ? [{ value: semesterFilter, label: semesterFilter }] : []), ...visibleSemesterGroups.flatMap((group) => group.semesters.map((item) => ({ value: item, label: item })))]} onChange={(rawValue) => { const value = rawValue === "all" ? rawValue : normalizeSemesterName(rawValue); setSemesterFilter(value); localStorage.setItem("vtn-active-semester", value); window.dispatchEvent(new CustomEvent("vtn-semester-filter-changed", { detail: value })); }} /></label>
+          <label>Trạng thái SV<SearchableFilter value={academicStatusFilter} allValue="all" allLabel="Tất cả trạng thái" options={filterOptions.academicStatuses.map((item) => ({ value: item, label: item }))} onChange={setAcademicStatusFilter} /></label>
+          <label>Trạng thái đăng ký<SearchableFilter value={registrationStatusFilter} allValue="all" allLabel="Tất cả đăng ký" options={filterOptions.registrationStatuses.map((item) => ({ value: item, label: item }))} onChange={setRegistrationStatusFilter} /></label>
+          <label>Lớp học<SearchableFilter value={classFilter} allValue="all" allLabel="Tất cả lớp" options={filterOptions.classes.map((item) => ({ value: item, label: item }))} onChange={setClassFilter} /></label>
+          <label>Ngành<SearchableFilter value={majorFilter} allValue="all" allLabel="Tất cả ngành" options={filterOptions.majors.map((item) => ({ value: item, label: item }))} onChange={setMajorFilter} /></label>
+          
         </div>
         {canImport && <section className="spreadsheet-transfer workspace-panel"><div><strong>Nhập danh sách lớp học phần</strong><p>Chọn nhiều tệp .xls cùng lúc. Hệ thống gộp theo MSSV, lưu lịch sử đăng ký môn học và bỏ qua các tệp tổng hợp học kỳ.</p></div><div className="spreadsheet-transfer-actions"><button type="button" disabled={rosterImportBusy || !isSupabaseConfigured} onClick={() => rosterInputRef.current?.click()}><FileUp size={15} />{rosterImportBusy ? "Đang nhập danh sách…" : "Nhập nhiều tệp .xls"}</button><input ref={rosterInputRef} hidden multiple type="file" accept=".xls,.xlsx" onChange={(event) => void importClassRosters(event.target.files)} /></div></section>}
-        <SpreadsheetTransferPanel title="Sinh viên" fields={studentTransferFields} rows={filteredStudents.map((student) => ({ ...student, lecturer: DEFAULT_LECTURER }) as unknown as Record<string, unknown>)} canImport={canImport} canExport={canExport} onImport={importStudents} />
+        <SpreadsheetTransferPanel title="Sinh viên" fields={studentTransferFields} rows={filteredStudents.map((student) => ({ ...student, lecturer: DEFAULT_LECTURER }) as unknown as Record<string, unknown>)} canImport={canImport} canExport={canExport} onImport={importStudents} onArchiveFiles={async (files) => { for (const item of files) await sourceDataService.archiveImportedFile(item.file, "student-records", item.rows); }} />
+        {duplicateStudentCodes !== null && <section className="students-duplicate-report" role="status" aria-live="polite">
+          <div><strong>{duplicateStudentCodes.length ? "Tìm thấy " + duplicateStudentCodes.length + " mã sinh viên bị trùng" : "Không tìm thấy mã sinh viên bị trùng"}</strong><button type="button" onClick={() => setDuplicateStudentCodes(null)}>Đóng</button></div>
+          {duplicateStudentCodes.length > 0 && <ul>{duplicateStudentCodes.map(({ code, students: matches }) => <li key={code}>
+            <div className="students-duplicate-code"><span>Mã sinh viên:</span>{visibleStudentDetailTabs.length > 0 ? <button type="button" className="students-duplicate-student-link" aria-label={`Xem thông tin sinh viên ${code}`} onClick={() => { const student = matches[0]; if (student) openStudentDetail(student); }}>{code}</button> : <strong>{code}</strong>}</div>
+            <div className="students-duplicate-course-list">
+              <div className="students-duplicate-course-row students-duplicate-course-heading"><strong>Họ và tên</strong><strong>Lớp sinh hoạt</strong><strong>Mã học phần</strong><strong>Tên học phần</strong><strong>Học kỳ</strong></div>
+              {matches.map((student, index) => {
+                const className = rosterField(student, "", "ma lop chu", "lop sinh hoat") || student.className;
+                const courseCode = rosterField(student, "", "courseCode", "subjectCode", "ma hoc phan", "ma mon hoc");
+                const courseName = rosterField(student, "", "courseName", "subjectName", "ten hoc phan", "ten mon hoc");
+                const semester = rosterField(student, "", "sourceTerm", "dot", "semester") || student.semesterName; const semesterYear = rosterField(student, "", "sourceAcademicYear", "academicYear", "nam hoc", "năm học");
+                return <div className="students-duplicate-course-row" key={student.id + "-" + index}><span>{student.fullName || "—"}</span><span>{className || "—"}</span><span>{courseCode || "—"}</span><span>{courseName || "—"}</span><span>{formatSemesterLabel(semester, semesterYear) || "—"}</span></div>;
+              })}
+            </div>
+          </li>)}</ul>}
+        </section>}
+        <div className="students-toolbar"><div className="students-search-wrap"><Search size={17} /><input aria-label="Tìm nhanh hồ sơ sinh viên" placeholder="Tìm MSSV, họ tên, điện thoại, email, CCCD, lớp, môn…" value={search} onChange={(event) => setSearch(event.target.value)} /></div><span>{loading ? "Đang tải..." : `${filteredStudents.length.toLocaleString("vi-VN")} / ${students.length.toLocaleString("vi-VN")} sinh viên`}</span><button type="button" disabled={loading || !students.length} onClick={checkDuplicateStudentCodes}><Search size={15} />Kiểm tra trùng mã SV</button></div>
 
-        <div className="students-bulk-toolbar"><label><input type="checkbox" checked={allVisibleSelected} disabled={!pageStudents.length || busy} onChange={toggleAllVisibleStudents} /> Chọn tất cả {pageStudents.length.toLocaleString("vi-VN")} dòng trên trang</label><div className="students-bulk-actions"><button type="button" disabled={!selectedStudentIds.size || busy} onClick={() => void handleBulkTrash()}><Trash2 size={16} />Xóa đã chọn ({selectedStudentIds.size})</button><button type="button" disabled={!students.length || busy} onClick={() => void handleBulkTrash(true)}><Trash2 size={16} />Xóa tất cả ({students.length})</button></div></div><div className="students-pagination"><label>Số dòng<select value={pageSize} onChange={(event) => { setPageSize(event.target.value as "10" | "20" | "50" | "100" | "all"); setCurrentPage(1); }}><option value="10">10 dòng</option><option value="20">20 dòng</option><option value="50">50 dòng</option><option value="100">100 dòng</option><option value="all">Tất cả</option></select></label><span>{filteredStudents.length ? `${pageStartIndex + 1}–${Math.min(pageStartIndex + pageStudents.length, filteredStudents.length)} / ${filteredStudents.length}` : "0 hồ sơ"}</span><div><button type="button" disabled={safePage <= 1 || busy} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}>Trước</button><span>Trang {safePage} / {pageCount}</span><button type="button" disabled={safePage >= pageCount || busy} onClick={() => setCurrentPage((page) => Math.min(pageCount, page + 1))}>Sau</button></div></div><div className="students-table-wrapper"><table>
-          <thead><tr><th aria-sort={sortState.key === "sequence" ? (sortState.direction === "asc" ? "ascending" : "descending") : "none"}><div className="students-select-header"><input type="checkbox" aria-label="Chọn tất cả sinh viên đang hiển thị" checked={allVisibleSelected} disabled={!pageStudents.length || busy} onChange={toggleAllVisibleStudents} /><button className="students-sort-header" type="button" onClick={() => { setSortState((current) => current.key === "sequence" ? { key: "sequence", direction: current.direction === "asc" ? "desc" : "asc" } : { key: "sequence", direction: "asc" }); setCurrentPage(1); }}>STT<span aria-hidden="true">{sortState.key === "sequence" ? (sortState.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></div></th>{studentSortHeaders.map(({ key, label }) => renderSortableHeader(label, key))}<th>THAO TÁC</th></tr></thead>
+        <div className="students-bulk-toolbar"><label><input type="checkbox" aria-label="Chọn tất cả sinh viên phù hợp" checked={allVisibleSelected} ref={(element) => { if (element) element.indeterminate = someVisibleSelected && !allVisibleSelected; }} disabled={!filteredStudents.length || busy} onChange={toggleAllVisibleStudents} /> Chọn tất cả {filteredStudents.length.toLocaleString("vi-VN")} dòng phù hợp</label><div className="students-bulk-actions"><button type="button" disabled={!selectedStudentIds.size || busy} onClick={() => void handleBulkTrash()}><Trash2 size={16} />Xóa đã chọn ({selectedStudentIds.size})</button><button type="button" disabled={!students.length || busy} onClick={() => void handleBulkTrash(true)}><Trash2 size={16} />Xóa tất cả ({students.length})</button></div></div><div className="students-pagination"><label>Số dòng<select value={pageSize} onChange={(event) => { setPageSize(event.target.value as "10" | "20" | "50" | "100" | "all"); setCurrentPage(1); }}><option value="10">10 dòng</option><option value="20">20 dòng</option><option value="50">50 dòng</option><option value="100">100 dòng</option><option value="all">Tất cả</option></select></label><span>{filteredStudents.length ? `${pageStartIndex + 1}–${Math.min(pageStartIndex + pageStudents.length, filteredStudents.length)} / ${filteredStudents.length} dòng` : "Đang hiển thị 0–0 / 0 dòng"}</span><div><button type="button" disabled={safePage <= 1 || busy} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}>Trước</button><span>Trang {safePage} / {pageCount}</span><button type="button" disabled={safePage >= pageCount || busy} onClick={() => setCurrentPage((page) => Math.min(pageCount, page + 1))}>Sau</button></div></div><div className="students-table-wrapper"><table>
+          <thead><tr><th aria-sort={sortState.key === "sequence" ? (sortState.direction === "asc" ? "ascending" : "descending") : "none"}><div className="students-select-header"><input type="checkbox" aria-label="Chọn tất cả sinh viên phù hợp" checked={allVisibleSelected} ref={(element) => { if (element) element.indeterminate = someVisibleSelected && !allVisibleSelected; }} disabled={!filteredStudents.length || busy} onChange={toggleAllVisibleStudents} /><button className="students-sort-header" type="button" onClick={() => { setSortState((current) => current.key === "sequence" ? { key: "sequence", direction: current.direction === "asc" ? "desc" : "asc" } : { key: "sequence", direction: "asc" }); setCurrentPage(1); }}>STT<span aria-hidden="true">{sortState.key === "sequence" ? (sortState.direction === "asc" ? "↑" : "↓") : "↕"}</span></button></div></th>{studentSortHeaders.map(({ key, label }) => renderSortableHeader(label, key))}<th>THAO TÁC</th></tr></thead>
           <tbody>
             {loading && <tr><td colSpan={23} className="students-state"><span className="students-spinner" />Đang tải danh sách sinh viên...</td></tr>}
             {!loading && !error && pageStudents.map((student, index) => { const name = studentNameParts(student); return <tr key={student.id}>
-              <td><label className="students-select-row"><input type="checkbox" aria-label={`Chọn ${student.studentCode} ${student.fullName}`} checked={selectedStudentIds.has(student.id)} disabled={busy} onChange={() => toggleStudentSelection(student.id)} />{index + 1}</label></td><td><button type="button" className="students-code-link" onClick={() => { setSelectedStudent(student); setStudentDetailTab("profile"); }} aria-label={`Xem hồ sơ sinh viên ${student.studentCode}`}>{student.studentCode}</button></td><td className="students-name">{name.hoDem || "—"}</td><td className="students-name">{name.ten || "—"}</td>
+              <td><label className="students-select-row"><input type="checkbox" aria-label={`Chọn ${student.studentCode} ${student.fullName}`} checked={selectedStudentIds.has(student.id)} disabled={busy} onChange={() => toggleStudentSelection(student.id)} />{pageStartIndex + index + 1}</label></td><td>{visibleStudentDetailTabs.length > 0 ? <button type="button" className="students-code-link" onClick={() => openStudentDetail(student)} aria-label={`Xem hồ sơ sinh viên ${student.studentCode}`}>{student.studentCode}</button> : <strong>{student.studentCode}</strong>}</td><td className="students-name">{name.hoDem || "—"}</td><td className="students-name">{name.ten || "—"}</td>
               <td>{rosterField(student, "gender") || "—"}</td><td>{student.dateOfBirth ? formatDate(student.dateOfBirth) : "—"}</td><td>{student.phone || "—"}</td><td>{rosterField(student, "citizenId", "so cccd", "cccd") || "—"}</td><td>{student.email || "—"}</td><td>{rosterField(student, "birthplace", "noi sinh") || "—"}</td>
               <td>{student.academicStatus || "—"}</td><td>{rosterField(student, "registrationStatus", "trang thai dang ky lhp") || "—"}</td><td>{rosterField(student, "tuitionStatus", "hoc phi") || "—"}</td><td>{rosterField(student, "", "ma lop chu", "mã lớp chữ", "lop sinh hoat") || student.className || "—"}</td><td>{rosterField(student, "registrationDate", "ngay dang ky") ? formatDate(rosterField(student, "registrationDate", "ngay dang ky")) : "—"}</td>
-              <td>{rosterField(student, "", "courseClassCode", "ma lhp", "mã lhp") || "—"}</td><td>{rosterField(student, "", "courseClassName", "ten lhp", "tên lhp") || "—"}</td><td>{rosterField(student, "", "courseCode", "subjectCode", "ma mon hoc", "mã môn học") || "—"}</td><td>{rosterField(student, "", "courseName", "subjectName", "ten hoc phan", "tên học phần") || "—"}</td><td>{rosterField(student, "", "sourceTerm", "dot", "đợt", "semester") || student.semesterName || "—"}</td><td>{rosterField(student, "", "sourceAcademicYear", "academicYear", "nam hoc", "năm học") || "—"}</td><td>{DEFAULT_LECTURER}</td><td><div className="students-row-actions"><button type="button" title="Xem hồ sơ" aria-label={`Xem hồ sơ ${student.fullName}`} onClick={() => setSelectedStudent(student)}><Eye size={17} /></button>{canUpdate && <button type="button" title="Chỉnh sửa" aria-label={`Chỉnh sửa ${student.fullName}`} onClick={() => { setEditingStudent(student); setShowForm(true); }}><Edit2 size={16} /></button>}{canResetPasswords && <button type="button" title="Đặt lại mật khẩu" aria-label={`Đặt lại mật khẩu ${student.fullName}`} disabled={busy} onClick={() => { setResetStudent(student); setCustomResetPassword(false); setResetResult(""); setResetPassword(""); }}><KeyRound size={16} /></button>}{canDelete && <button type="button" title="Chuyển vào thùng rác" aria-label={`Chuyển ${student.fullName} vào thùng rác`} disabled={busy} onClick={() => void handleTrash(student)}><Trash2 size={16} /></button>}</div></td>
+              <td>{rosterField(student, "", "courseClassCode", "ma lhp", "mã lhp") || "—"}</td><td>{rosterField(student, "", "courseClassName", "ten lhp", "tên lhp") || "—"}</td><td>{rosterField(student, "", "courseCode", "subjectCode", "ma mon hoc", "mã môn học") || "—"}</td><td>{rosterField(student, "", "courseName", "subjectName", "ten hoc phan", "tên học phần") || "—"}</td><td>{formatSemesterLabel(rosterField(student, "", "sourceTerm", "dot", "đợt", "semester") || student.semesterName, rosterField(student, "", "sourceAcademicYear", "academicYear", "nam hoc", "năm học")) || "—"}</td><td>{rosterField(student, "", "sourceAcademicYear", "academicYear", "nam hoc", "năm học") || "—"}</td><td>{DEFAULT_LECTURER}</td><td><div className="students-row-actions">{visibleStudentDetailTabs.length > 0 && <button type="button" title="Xem hồ sơ" aria-label={`Xem hồ sơ ${student.fullName}`} onClick={() => setSelectedStudent(student)}><Eye size={17} /></button>}{canUpdate && <button type="button" title="Chỉnh sửa" aria-label={`Chỉnh sửa ${student.fullName}`} onClick={() => { setEditingStudent(student); setShowForm(true); }}><Edit2 size={16} /></button>}{canResetPasswords && <button type="button" title="Đặt lại mật khẩu" aria-label={`Đặt lại mật khẩu ${student.fullName}`} disabled={busy} onClick={() => { setResetStudent(student); setCustomResetPassword(false); setResetResult(""); setResetPassword(""); }}><KeyRound size={16} /></button>}{canDelete && <button type="button" title="Chuyển vào thùng rác" aria-label={`Chuyển ${student.fullName} vào thùng rác`} disabled={busy} onClick={() => void handleTrash(student)}><Trash2 size={16} /></button>}</div></td>
             </tr>; })}
             {!loading && !error && filteredStudents.length === 0 && <tr><td colSpan={23} className="students-state"><div className="students-empty-icon"><Archive size={22} /></div><strong>{search ? "Không tìm thấy sinh viên" : "Chưa có sinh viên nào"}</strong><span>{search ? "Thử tìm bằng mã sinh viên hoặc họ tên khác." : "Thêm hồ sơ đầu tiên để bắt đầu quản lý."}</span></td></tr>}
             {!loading && error && <tr><td colSpan={23} className="students-state">Không thể hiển thị dữ liệu. Kiểm tra kết nối rồi tải lại.</td></tr>}
@@ -555,18 +657,36 @@ export default function StudentListPage({ canResetPasswords = false, canImport =
         {error && <button type="button" className="students-retry" onClick={() => void loadStudents()}>Thử tải lại</button>}
       </section>
 
-        {selectedStudent && <div className="students-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedStudent(undefined); }}><section className="students-detail students-profile-dialog" role="dialog" aria-modal="true" aria-labelledby="student-detail-title"><div className="students-detail-header"><div><span>HỒ SƠ SINH VIÊN</span><h2 id="student-detail-title">{selectedStudent.fullName}</h2><p>Mã SV: {selectedStudent.studentCode}</p></div><button type="button" aria-label="Đóng hồ sơ" onClick={() => setSelectedStudent(undefined)}><X size={19} /></button></div><div className="student-detail-tabs" role="tablist"><button type="button" role="tab" aria-selected={studentDetailTab === "profile"} className={studentDetailTab === "profile" ? "active" : ""} onClick={() => setStudentDetailTab("profile")}>1. Hồ sơ chi tiết</button><button type="button" role="tab" aria-selected={studentDetailTab === "courses"} className={studentDetailTab === "courses" ? "active" : ""} onClick={() => setStudentDetailTab("courses")}>2. Lịch sử theo học</button></div>{studentDetailTab === "profile" ? <><dl>{[["Mã sinh viên", selectedStudent.studentCode], ["Họ và tên", selectedStudent.fullName], ["Giới tính", rosterField(selectedStudent, "gender")], ["Ngày sinh", selectedStudent.dateOfBirth ? formatDate(selectedStudent.dateOfBirth) : ""], ["Điện thoại", selectedStudent.phone], ["Số CCCD", rosterField(selectedStudent, "citizenId", "so cccd", "cccd")], ["Email", selectedStudent.email], ["Nơi sinh", rosterField(selectedStudent, "birthplace", "noi sinh")], ["Trạng thái SV", selectedStudent.academicStatus], ["Trạng thái đăng ký LHP", rosterField(selectedStudent, "registrationStatus", "trang thai dang ky lhp")], ["Học phí", rosterField(selectedStudent, "tuitionStatus", "hoc phi")], ["Lớp sinh hoạt", selectedStudent.className], ["Ngày đăng ký", rosterField(selectedStudent, "registrationDate", "ngay dang ky")], ["Mã LHP", rosterField(selectedStudent, "", "courseClassCode", "ma lhp", "mã lhp")], ["Tên LHP", rosterField(selectedStudent, "", "courseClassName", "ten lhp", "tên lhp")], ["Mã môn học", rosterField(selectedStudent, "", "courseCode", "subjectCode", "ma mon hoc", "mã môn học")], ["Tên học phần", rosterField(selectedStudent, "", "courseName", "subjectName", "ten hoc phan", "tên học phần")], ["Đợt", rosterField(selectedStudent, "", "sourceTerm", "semester") || selectedStudent.semesterName], ["Năm học", rosterField(selectedStudent, "", "sourceAcademicYear", "academicYear")], ["Bậc đào tạo", rosterField(selectedStudent, "", "sourceEducationLevel")], ["Loại đào tạo", rosterField(selectedStudent, "", "sourceTrainingType")], ["Ghi chú", readableStudentNotes(selectedStudent.notes)]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || "—"}</dd></div>)}</dl>{canUpdate && <button className="students-primary" type="button" onClick={() => { setEditingStudent(selectedStudent); setSelectedStudent(undefined); setShowForm(true); }}>Chỉnh sửa hồ sơ</button>}</> : <section className="student-course-history">
-  <div className="student-history-heading"><div><h3>Lịch sử theo học</h3><p>Lịch sử theo học với ThS. Vũ Trung Nghĩa</p></div><span className="student-history-count">Tổng cộng: {lecturerCourses.length} môn</span></div>
-  {coursesLoading ? <p>Đang tải lịch sử học phần…</p> : coursesError ? <p role="alert" className="students-error">{coursesError}</p> : lecturerCourses.length ? <div className="student-course-cards">{lecturerCourses.map((course, index) => {
-    const status = String(course.registrationStatus || course.studentStatus || "Đã đăng ký");
-    const score = String(course.score ?? "").trim();
-    const credits = String(course.credits ?? "").trim();
-    return <article className="student-course-card" key={`${course.courseCode}-${course.semesterName}-${course.classCode}-${index}`}>
-      <div className="student-course-card-main"><div className="student-course-card-title"><strong>{course.subjectCode || course.courseCode}</strong><span>·</span><b>{course.subjectName}</b></div><p>{course.enrollmentTerm || course.semesterName}{course.enrollmentYear || course.academicYear ? ` (${course.enrollmentYear || course.academicYear})` : ""}{credits ? ` · ${credits} tín chỉ` : ""} · Giảng viên: ThS. Vũ Trung Nghĩa</p></div>
-      <div className="student-course-card-meta">{score && <strong className="student-course-score">{score} điểm</strong>}<span>{status}</span></div>
-    </article>;
-  })}</div> : <p>Chưa tìm thấy học phần của sinh viên này trong danh sách lớp học phần do ThS. Vũ Trung Nghĩa phụ trách.</p>}
-</section>}</section></div>}
+        {selectedStudent && <div className="students-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedStudent(undefined); }}>
+          <section className="students-detail students-profile-dialog students-grade-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="student-detail-title">
+            <div className="students-detail-header"><div><span>HỒ SƠ SINH VIÊN</span><h2 id="student-detail-title">{selectedStudent.fullName}</h2><p>Mã SV: {selectedStudent.studentCode}</p></div><button type="button" aria-label="Đóng hồ sơ" onClick={() => setSelectedStudent(undefined)}><X size={19} /></button></div>
+            <div className="student-detail-tabs" role="tablist">
+              {tabPermissions.profile && <button type="button" role="tab" aria-selected={activeStudentDetailTab === "profile"} className={activeStudentDetailTab === "profile" ? "active" : ""} onClick={() => setStudentDetailTab("profile")}>1. Thông tin sinh viên</button>}
+              {tabPermissions.results && <button type="button" role="tab" aria-selected={activeStudentDetailTab === "results"} className={activeStudentDetailTab === "results" ? "active" : ""} onClick={() => setStudentDetailTab("results")}>2. Bảng kết quả học tập</button>}
+              {tabPermissions.history && <button type="button" role="tab" aria-selected={activeStudentDetailTab === "courses"} className={activeStudentDetailTab === "courses" ? "active" : ""} onClick={() => setStudentDetailTab("courses")}>3. Lịch sử theo học</button>}
+            </div>
+            {!activeStudentDetailTab ? <p>Bạn chưa được cấp quyền xem các tab thông tin sinh viên.</p> : activeStudentDetailTab === "profile" ? <><dl className="student-info-fields">{[
+              ["Mã sinh viên", selectedStudent.studentCode],
+              ["Họ và tên", selectedStudent.fullName],
+              ["Giới tính", rosterField(selectedStudent, "gender", "gioi tinh")],
+              ["Ngày sinh", selectedStudent.dateOfBirth ? formatDate(selectedStudent.dateOfBirth) : ""],
+              ["Số điện thoại", selectedStudent.phone],
+              ["Số CCCD", rosterField(selectedStudent, "citizenId", "so cccd", "cccd")],
+              ["Email", selectedStudent.email],
+              ["Nơi sinh", rosterField(selectedStudent, "birthplace", "noi sinh")],
+              ["Lớp sinh hoạt", rosterField(selectedStudent, "", "ma lop chu", "lop sinh hoat") || selectedStudent.className],
+              ["Ngành", rosterField(selectedStudent, "academicMajor", "sourceFaculty", "academicMajor", "nganh") || selectedStudent.faculty],
+              ["Bậc đào tạo", rosterField(selectedStudent, "", "sourceEducationLevel", "educationLevel", "bac dao tao")],
+              ["Loại đào tạo", rosterField(selectedStudent, "", "sourceTrainingType", "trainingType", "loai dao tao")],
+              ["Trạng thái SV", selectedStudent.academicStatus],
+            ].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value || "—"}</dd></div>)}</dl>{canUpdate && <button className="students-primary" type="button" onClick={() => { setEditingStudent(selectedStudent); setSelectedStudent(undefined); setShowForm(true); }}>Chỉnh sửa hồ sơ</button>}</>
+              : activeStudentDetailTab === "results" ? <StudentGradeResultsPanel records={studentGradeRecords} loading={coursesLoading} error={coursesError} />
+                : <section className="student-course-history">
+                  <div className="student-history-heading"><div><h3>Lịch sử theo học</h3><p>Lịch sử theo học với ThS. Vũ Trung Nghĩa</p><span className="student-history-lecturer">Giảng viên: {DEFAULT_LECTURER}</span></div><span className="student-history-count">Tổng cộng: {lecturerCourses.length} môn</span></div>
+                  {coursesLoading ? <p>Đang tải lịch sử học phần…</p> : coursesError ? <p role="alert" className="students-error">{coursesError}</p> : lecturerCourses.length ? <StudentCourseHistoryTable courses={lecturerCourses} /> : <p>Chưa tìm thấy bản ghi trong Sổ điểm cho sinh viên này với giảng viên ThS. Vũ Trung Nghĩa.</p>}
+                </section>}
+          </section>
+        </div>}
       {resetStudent && <div className="students-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !resetBusy) setResetStudent(undefined); }}><form className="students-detail reset-password-dialog" role="dialog" aria-modal="true" aria-labelledby="reset-student-password-title" onSubmit={handleResetPassword}><div className="students-detail-header"><div><span>TÀI KHOẢN SINH VIÊN</span><h2 id="reset-student-password-title">Đặt lại mật khẩu</h2><p>{resetStudent.fullName} · {resetStudent.studentCode}</p></div><button type="button" aria-label="Đóng" disabled={resetBusy} onClick={() => setResetStudent(undefined)}><X size={19} /></button></div><label className="reset-password-choice"><input type="radio" checked={!customResetPassword} onChange={() => setCustomResetPassword(false)} /> Dùng mã số sinh viên làm mật khẩu tạm</label><label className="reset-password-choice"><input type="radio" checked={customResetPassword} onChange={() => setCustomResetPassword(true)} /> Tạo mật khẩu tùy chỉnh</label>{customResetPassword && <label className="reset-password-custom">Mật khẩu mới<input type="password" minLength={6} maxLength={128} required value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} autoComplete="new-password" /></label>}{resetResult && <div className="reset-password-result"><span>Mật khẩu mới</span><code>{resetResult}</code><button type="button" onClick={() => void navigator.clipboard.writeText(resetResult)}><Copy size={15} /> Sao chép</button></div>}<div className="workspace-form-actions"><button className="students-primary" disabled={resetBusy}>{resetBusy ? "Đang cập nhật…" : resetResult ? "Đặt lại lại mật khẩu" : "Cập nhật mật khẩu"}</button><button type="button" onClick={() => setResetStudent(undefined)}>Đóng</button></div><small>Mật khẩu được đồng bộ trực tiếp với Supabase Auth. Hãy gửi cho sinh viên qua kênh riêng.</small></form></div>}
     </main>
   );
