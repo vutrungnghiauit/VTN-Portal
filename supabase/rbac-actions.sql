@@ -7,6 +7,6 @@ insert into public.role_module_permissions(role_key,module_key,action_key,allowe
 select r.role_key,m.module_key,a.action_key,
   case when r.role_key in ('system_admin','sub_admin') then true else false end
 from (values ('system_admin'),('sub_admin'),('teacher'),('assistant'),('class_president'),('class_vice'),('student')) r(role_key)
-cross join (values ('dashboard'),('academic-years'),('semesters'),('students'),('student-records'),('groups'),('teaching-plans'),('calendar'),('grades'),('assignments'),('tasks'),('student-support'),('documents'),('forms-templates'),('surveys'),('notifications'),('announcements'),('supports'),('random-picker'),('my-profile'),('accounts'),('permissions'),('audit-logs'),('backup'),('trash'),('settings')) m(module_key)
+cross join (values ('dashboard'),('academic-years'),('semesters'),('students'),('student-records'),('groups'),('teaching-plans'),('calendar'),('grades'),('assignments'),('tasks'),('student-support'),('documents'),('source-data'),('forms-templates'),('surveys'),('notifications'),('announcements'),('supports'),('random-picker'),('my-profile'),('accounts'),('permissions'),('audit-logs'),('backup'),('trash'),('settings')) m(module_key)
 cross join (values ('backup'),('import')) a(action_key)
 on conflict(role_key,module_key,action_key) do nothing;
