@@ -7,8 +7,12 @@ create table if not exists public.app_notifications (
   severity text not null check (severity in ('normal','important','urgent')),
   scope text not null check (scope in ('school','class')),
   class_name text,
+  deleted_at timestamptz,
+  purge_at timestamptz,
   created_at timestamptz not null default now()
 );
+alter table public.app_notifications add column if not exists deleted_at timestamptz;
+alter table public.app_notifications add column if not exists purge_at timestamptz;
 create table if not exists public.app_notification_recipients (
   notification_id uuid not null references public.app_notifications(id) on delete cascade,
   recipient_id uuid not null references auth.users(id) on delete cascade,
@@ -21,15 +25,35 @@ alter table public.app_notifications enable row level security;
 alter table public.app_notification_recipients enable row level security;
 drop policy if exists "Recipients read their notifications" on public.app_notifications;
 create policy "Recipients read their notifications" on public.app_notifications for select to authenticated
-  using (exists (select 1 from public.app_notification_recipients r where r.notification_id = id and r.recipient_id = (select auth.uid())));
+  using (deleted_at is null and public.can_access_module('notifications','read') and exists (select 1 from public.app_notification_recipients r where r.notification_id = id and r.recipient_id = (select auth.uid())));
 drop policy if exists "Users read their notification inbox" on public.app_notification_recipients;
-create policy "Users read their notification inbox" on public.app_notification_recipients for select to authenticated using (recipient_id = (select auth.uid()));
+create policy "Users read their notification inbox" on public.app_notification_recipients for select to authenticated using (recipient_id = (select auth.uid()) and public.can_access_module('notifications','read'));
 drop policy if exists "Users mark their notifications read" on public.app_notification_recipients;
 create policy "Users mark their notifications read" on public.app_notification_recipients for update to authenticated
-  using (recipient_id = (select auth.uid())) with check (recipient_id = (select auth.uid()));
+  using (recipient_id = (select auth.uid()) and public.can_access_module('notifications','read')) with check (recipient_id = (select auth.uid()) and public.can_access_module('notifications','read'));
 grant select on public.app_notifications, public.app_notification_recipients to authenticated;
 grant update (read_at) on public.app_notification_recipients to authenticated;
 revoke insert, delete on public.app_notifications, public.app_notification_recipients from anon, authenticated;
+
+create or replace function public.list_app_notification_classes()
+returns table(class_name text)
+language plpgsql security definer set search_path = '' as $$
+declare
+  caller uuid := (select auth.uid());
+  role_key text := public.current_role_key();
+begin
+  if caller is null or not public.can_access_module('notifications','create') then raise exception 'Bạn không có quyền soạn thông báo'; end if;
+  if role_key not in ('super_admin','system_admin','sub_admin','teacher','assistant') then raise exception 'Vai trò này không được soạn thông báo'; end if;
+  return query
+    select distinct trim(s.class_name)::text
+    from public.students s
+    where s.deleted_at is null
+      and nullif(trim(s.class_name),'') is not null
+      and (public.is_system_admin() or s.owner_id=caller)
+    order by 1;
+end;
+$$;
+grant execute on function public.list_app_notification_classes() to authenticated;
 
 create or replace function public.publish_app_notification(p_title text,p_body text,p_severity text,p_scope text,p_class_name text default null)
 returns uuid language plpgsql security definer set search_path = '' as $$
@@ -37,29 +61,38 @@ declare
   caller uuid := (select auth.uid());
   role_key text := public.current_role_key();
   notice_id uuid;
+  recipient_count integer;
 begin
   if caller is null or not public.can_access_module('notifications','create') then raise exception 'Bạn không có quyền gửi thông báo'; end if;
-  if role_key not in ('super_admin','system_admin','sub_admin','teacher') then raise exception 'Vai trò này chỉ được nhận thông báo'; end if;
+  if role_key not in ('super_admin','system_admin','sub_admin','teacher','assistant') then raise exception 'Vai trò này chỉ được nhận thông báo'; end if;
   if p_severity not in ('normal','important','urgent') then raise exception 'Mức độ thông báo không hợp lệ'; end if;
   if p_scope not in ('school','class') then raise exception 'Phạm vi thông báo không hợp lệ'; end if;
-  if p_scope = 'class' and nullif(trim(p_class_name),'') is null then raise exception 'Cần chọn lớp nhận thông báo'; end if;
+  if nullif(trim(p_title),'') is null or nullif(trim(p_body),'') is null then raise exception 'Cần nhập tiêu đề và nội dung thông báo'; end if;
+  if p_scope = 'class' then
+    if nullif(trim(p_class_name),'') is null then raise exception 'Cần chọn lớp nhận thông báo'; end if;
+    if not exists (
+      select 1 from public.students s
+      where s.deleted_at is null and s.class_name=trim(p_class_name)
+        and (public.is_system_admin() or s.owner_id=caller)
+    ) then raise exception 'Lớp này không thuộc phạm vi giảng dạy của tài khoản'; end if;
+  end if;
   insert into public.app_notifications (sender_id,title,body,severity,scope,class_name)
   values (caller,trim(p_title),trim(p_body),p_severity,p_scope,nullif(trim(p_class_name),'')) returning id into notice_id;
-  if p_scope = 'school' and role_key in ('super_admin','system_admin','sub_admin') then
+  if p_scope = 'school' and public.is_system_admin() then
     insert into public.app_notification_recipients (notification_id,recipient_id)
-    select notice_id,user_id from public.user_profiles where role_key = 'student' and user_id <> caller;
+    select notice_id,user_id from public.user_profiles where deleted_at is null;
   elsif p_scope = 'school' then
     insert into public.app_notification_recipients (notification_id,recipient_id)
-    select notice_id,auth_user_id from public.students where owner_id = caller and auth_user_id is not null and deleted_at is null;
+    select notice_id,auth_user_id from public.students where owner_id=caller and auth_user_id is not null and deleted_at is null;
+  elsif public.is_system_admin() then
+    insert into public.app_notification_recipients (notification_id,recipient_id)
+    select notice_id,auth_user_id from public.students where class_name=trim(p_class_name) and auth_user_id is not null and deleted_at is null;
   else
-    if role_key = 'teacher' then
-      insert into public.app_notification_recipients (notification_id,recipient_id)
-      select notice_id,auth_user_id from public.students where owner_id = caller and class_name = trim(p_class_name) and auth_user_id is not null and deleted_at is null;
-    else
-      insert into public.app_notification_recipients (notification_id,recipient_id)
-      select notice_id,auth_user_id from public.students where class_name = trim(p_class_name) and auth_user_id is not null and deleted_at is null;
-    end if;
+    insert into public.app_notification_recipients (notification_id,recipient_id)
+    select notice_id,auth_user_id from public.students where owner_id=caller and class_name=trim(p_class_name) and auth_user_id is not null and deleted_at is null;
   end if;
+  get diagnostics recipient_count = row_count;
+  if recipient_count=0 then raise exception 'Không tìm thấy người nhận hợp lệ trong phạm vi đã chọn'; end if;
   return notice_id;
 end;
 $$;
