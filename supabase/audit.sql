@@ -10,8 +10,12 @@ create table if not exists public.system_audit_logs (
   record_label text not null default 'Bản ghi',
   details jsonb not null default '{}'::jsonb,
   ip_address inet,
+  deleted_at timestamptz,
+  purge_at timestamptz,
   event_at timestamptz not null default now()
 );
+alter table public.system_audit_logs add column if not exists deleted_at timestamptz;
+alter table public.system_audit_logs add column if not exists purge_at timestamptz;
 create index if not exists system_audit_actor_time_idx on public.system_audit_logs(actor_id,event_at desc);
 create index if not exists system_audit_subject_time_idx on public.system_audit_logs(subject_user_id,event_at desc);
 create index if not exists system_audit_module_action_idx on public.system_audit_logs(module_key,action,event_at desc);
@@ -19,12 +23,12 @@ alter table public.system_audit_logs enable row level security;
 drop policy if exists "Scoped audit log visibility" on public.system_audit_logs;
 create policy "Scoped audit log visibility" on public.system_audit_logs for select to authenticated
 using (
-  public.is_system_admin()
+  deleted_at is null and (public.is_system_admin()
   or actor_id = (select auth.uid())
   or (public.current_role_key() = 'student' and subject_user_id = (select auth.uid()))
   or (public.current_role_key() = 'teacher' and subject_user_id in (
     select s.auth_user_id from public.students s where s.owner_id = (select auth.uid()) and s.auth_user_id is not null
-  ))
+  )))
 );
 grant select on public.system_audit_logs to authenticated;
 revoke all on public.system_audit_logs from anon, authenticated;
