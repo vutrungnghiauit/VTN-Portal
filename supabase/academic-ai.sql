@@ -8,14 +8,18 @@ create table if not exists public.academic_ai_sources (
   vector_store_id text not null,
   status text not null default 'ready' check (status in ('processing','ready','failed')),
   uploaded_by uuid references auth.users(id) on delete set null,
+  deleted_at timestamptz,
+  purge_at timestamptz,
   created_at timestamptz not null default now()
 );
+alter table public.academic_ai_sources add column if not exists deleted_at timestamptz;
+alter table public.academic_ai_sources add column if not exists purge_at timestamptz;
 
 alter table public.academic_ai_sources enable row level security;
 drop policy if exists "Academic AI sources are visible to permitted users" on public.academic_ai_sources;
 create policy "Academic AI sources are visible to permitted users"
   on public.academic_ai_sources for select to authenticated
-  using (public.can_access_module('academic-ai','read'));
+  using (deleted_at is null and public.can_access_module('academic-ai','read'));
 drop policy if exists "Academic AI source managers can add sources" on public.academic_ai_sources;
 create policy "Academic AI source managers can add sources"
   on public.academic_ai_sources for insert to authenticated
@@ -28,7 +32,7 @@ create policy "Academic AI source managers can update sources"
 drop policy if exists "Academic AI source managers can remove sources" on public.academic_ai_sources;
 create policy "Academic AI source managers can remove sources"
   on public.academic_ai_sources for delete to authenticated
-  using (public.can_access_module('academic-ai','delete'));
+  using (deleted_at is not null and public.can_access_module('academic-ai','delete'));
 
 grant select, insert, update, delete on public.academic_ai_sources to authenticated;
 revoke all on public.academic_ai_sources from anon;
