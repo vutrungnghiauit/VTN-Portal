@@ -1,0 +1,118 @@
+.permissions-page { gap: 22px; }
+.permissions-tabs { display: flex; align-items: center; gap: 26px; border-bottom: 1px solid #dce4f0; }
+.permissions-tabs button { position: relative; display: inline-flex; align-items: center; gap: 9px; padding: 13px 14px; border: 0; background: transparent; color: #64748b; font-size: 14px; font-weight: 650; cursor: pointer; }
+.permissions-tabs button.is-active { color: var(--color-primary); }
+.permissions-tabs button.is-active::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; background: var(--color-primary); content: ""; }
+.permissions-role-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.permissions-role-card { position: relative; min-height: 132px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 19px 20px; border: 1px solid #dce4f0; border-radius: 16px; background: #fff; color: #4b5d79; text-align: left; cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease, background .15s ease; }
+.permissions-role-card:hover { border-color: #b8c9e8; box-shadow: 0 5px 16px #25346b0d; }
+.permissions-role-card.is-selected { border-color: var(--color-primary); background: #edf3ff; box-shadow: 0 0 0 2px #28389818; color: var(--color-primary); }
+.permissions-role-icon { display: none; }
+.permissions-role-card.is-super .permissions-role-icon { position: absolute; top: 19px; right: 20px; display: grid; place-items: center; color: var(--color-primary); }
+.permissions-role-card strong { color: #465873; font-size: 15px; line-height: 1.4; }
+.permissions-role-card.is-selected strong { color: var(--color-primary); }
+.permissions-role-card strong small { font-size: 12px; font-weight: 650; }
+.permissions-role-card > span:last-child { color: #60718c; font-size: 13px; line-height: 1.55; }
+.permissions-role-card.is-selected > span:last-child { color: #5441f3; }
+.permissions-users-panel, .permissions-matrix-panel { overflow: hidden; border: 1px solid #dce4f0; border-radius: 15px; background: #fff; box-shadow: 0 1px 2px #10234b0a; }
+.permissions-users-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 19px 22px; border-bottom: 1px solid #dce4f0; }
+.permissions-users-heading h2, .permissions-matrix-heading h2 { margin: 0; color: #18243a; font-size: 17px; }
+.permissions-users-heading p, .permissions-matrix-heading p { margin: 5px 0 0; color: #687c9c; font-size: 13px; }
+.permissions-search, .permissions-resource-search { display: flex; align-items: center; gap: 9px; min-width: 260px; height: 42px; padding: 0 12px; border: 1px solid #d8e1ee; border-radius: 10px; color: #8da0bd; background: #fff; }
+.permissions-search input, .permissions-resource-search input { width: 100%; min-width: 0; border: 0; outline: 0; color: #263953; font: inherit; font-size: 13px; }
+.permissions-user-list { max-height: min(56vh, 760px); overflow: auto; }
+.permissions-user-list table { width: 100%; border-collapse: collapse; }
+.permissions-user-list th { padding: 12px 18px; color: #667a99; background: #f8fafc; text-align: left; font-size: 11px; }
+.permissions-user-list td { padding: 12px 18px; border-top: 1px solid #edf1f7; color: #4c5e79; font-size: 13px; }
+.permissions-user-list td strong, .permissions-user-list td small { display: block; }
+.permissions-role-badge { display: inline-flex; padding: 6px 9px; border: 1px solid #d8e1ee; border-radius: 8px; background: #f8fafc; color: #465873; font-size: 11px; font-weight: 650; white-space: nowrap; }
+.permissions-role-badge.role-student, .permissions-role-badge.role-class_president, .permissions-role-badge.role-class_vice { border-color: #80c9ff; background: #f0f9ff; color: #0072bc; }
+.permissions-role-badge.role-teacher, .permissions-role-badge.role-assistant { border-color: #b8aaff; background: #f6f4ff; color: #4c36ff; }
+.permissions-user-list td strong { color: #18243a; }
+.permissions-user-list td small { margin-top: 3px; color: #8da0bd; }
+.permissions-user-list tr.is-selected { background: #f6f5ff; }
+.permissions-user-list td button { border: 1px solid #d8e1ee; border-radius: 8px; padding: 8px 12px; background: #fff; color: var(--color-primary); font-weight: 650; cursor: pointer; }
+.permissions-user-list td button:disabled { opacity: .55; cursor: not-allowed; }
+.permissions-selected-account { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 18px; border: 1px solid #ddd9ff; border-radius: 12px; background: #f8f7ff; color: #5f6f88; font-size: 13px; }
+.permissions-selected-account div { display: grid; gap: 3px; }
+.permissions-selected-account div span { color: #8998b0; font-size: 10px; font-weight: 750; letter-spacing: .06em; }
+.permissions-selected-account strong { color: #4834e8; }
+.permissions-matrix-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 22px 17px; border-bottom: 1px solid #dce4f0; background: #fbfcfe; }
+.permissions-matrix-heading h2 em { color: #4c36ff; font-style: normal; }
+.permissions-legend { display: flex; flex: 0 0 auto; align-items: center; gap: 20px; color: #53647b; font-size: 13px; font-weight: 600; }
+.permissions-legend span { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.permissions-legend i { width: 11px; height: 11px; border-radius: 50%; background: #cbd5e1; }
+.permissions-legend i.is-allowed { background: #08b981; }
+.permissions-resource-search { width: min(430px, calc(100% - 32px)); margin: 16px; }
+.permissions-matrix-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 0 18px 14px; color: #71839d; font-size: 12px; }
+.permissions-select-all { display: inline-flex; min-height: 38px; flex: 0 0 auto; align-items: center; justify-content: center; gap: 7px; padding: 0 13px; border: 1px solid #cbd8f5; border-radius: 9px; background: #eef4ff; color: var(--color-primary); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: background .15s ease, border-color .15s ease; }
+.permissions-select-all:not(:disabled):hover { border-color: #aebff0; background: #e3edff; }
+.permissions-select-all:disabled { opacity: .55; cursor: not-allowed; }
+.permissions-matrix-scroll { max-height: min(70vh, 850px); overflow: auto; border-top: 1px solid #edf1f7; }
+.permissions-matrix-table { width: 100%; min-width: 1130px; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+.permissions-matrix-table th, .permissions-matrix-table td { border-bottom: 1px solid #edf1f7; }
+.permissions-matrix-table thead th { position: sticky; top: 0; z-index: 3; height: 53px; padding: 9px 8px; background: #f8fafc; color: #617594; text-align: center; text-transform: uppercase; font-size: 10px; font-weight: 750; }
+.permissions-matrix-table thead th:first-child { position: sticky; left: 0; z-index: 5; width: 38%; min-width: 320px; padding-left: 20px; text-align: left; }
+.permissions-matrix-table thead th:not(:first-child) { min-width: 105px; }
+.permissions-matrix-table tbody td { height: 59px; padding: 9px 8px; color: #465873; text-align: center; vertical-align: middle; }
+.permissions-matrix-table tbody td:first-child { position: sticky; left: 0; z-index: 2; width: 38%; padding: 10px 18px; background: #fff; text-align: left; }
+.permissions-matrix-table tbody td:first-child strong, .permissions-matrix-table tbody td:first-child small { display: block; }
+.permissions-matrix-table tbody td:first-child strong { color: #19253a; font-size: 13px; line-height: 1.4; }
+.permissions-matrix-table tbody td:first-child small { margin-top: 2px; color: #8a9bb5; font-size: 11px; line-height: 1.4; }
+.permissions-group-row td { background: #f7f9fc; }
+.permissions-group-row td:first-child { background: #f7f9fc !important; }
+.permissions-group-row td:first-child strong { color: #4c36ff; font-size: 14px; }
+.permissions-module-row td:first-child { padding-left: 30px !important; }
+.permissions-tab-row td { height: 49px !important; background: #fcfdff; }
+.permissions-tab-row td:first-child { padding-left: 49px !important; background: #fcfdff !important; }
+.permissions-tab-row td:first-child strong { color: #596b87 !important; font-size: 12px !important; font-weight: 600; }
+.permissions-toggle { display: inline-flex; width: 37px; height: 37px; align-items: center; justify-content: center; border: 0; border-radius: 10px; cursor: pointer; transition: transform .12s ease, opacity .12s ease; }
+.permissions-toggle.is-allowed { background: #e2f9ef; color: #14a878; }
+.permissions-toggle.is-denied { background: #f0f3f7; color: #aab5c4; }
+.permissions-toggle:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 3px 8px #14234217; }
+.permissions-toggle:disabled { cursor: not-allowed; opacity: .75; }
+.permissions-not-applicable { color: #c0cad7; }
+.permissions-message { margin: 14px 18px 0; padding: 10px 12px; border-radius: 9px; font-size: 13px; }
+.permissions-message.is-error { background: #fff1f1; color: #b42318; }
+.permissions-message.is-success { background: #ecfdf5; color: #087f5b; }
+.permissions-matrix-footer { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 13px 18px; color: #71839d; font-size: 12px; }
+.permissions-matrix-footer button { border: 1px solid #d8e1ee; border-radius: 8px; padding: 8px 11px; background: #fff; color: var(--color-primary); font-size: 12px; font-weight: 650; cursor: pointer; }
+.permissions-matrix-footer button:disabled { opacity: .6; cursor: not-allowed; }
+@media (max-width: 1100px) { .permissions-role-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .permissions-matrix-heading { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 680px) { .permissions-role-grid { grid-template-columns: 1fr; } .permissions-role-card { position: relative; min-height: 105px; } .permissions-users-heading { align-items: stretch; flex-direction: column; } .permissions-search { min-width: 0; } .permissions-tabs { gap: 4px; } .permissions-tabs button { padding: 12px 7px; font-size: 12px; } .permissions-legend { flex-wrap: wrap; } .permissions-matrix-footer { align-items: flex-start; flex-direction: column; } .permissions-matrix-toolbar { align-items: stretch; flex-direction: column; } .permissions-select-all { width: 100%; } }
+
+.permissions-role-filter { min-width: 220px; height: 42px; padding: 0 12px; border: 1px solid #d8e1ee; border-radius: 10px; background: #fff; color: #34445f; font: inherit; font-size: 13px; }
+.permissions-users-heading > .searchable-filter { width: 220px; flex: 0 0 220px; }
+@media (max-width: 680px) { .permissions-role-filter { width: 100%; min-width: 0; } }
+@media (max-width: 680px) { .permissions-users-heading > .searchable-filter { width: 100%; flex: 1 1 auto; } }
+
+.permissions-user-actions { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; }
+.permissions-user-actions button.permissions-icon-action { display: inline-grid; width: 36px; min-width: 36px; height: 36px; padding: 0; place-items: center; border-color: #d8e1ee; border-radius: 8px; background: #fff; color: var(--color-primary); cursor: pointer; }
+.permissions-user-actions button.permissions-icon-action:hover:not(:disabled) { border-color: #a79aff; background: #f7f5ff; }
+.permissions-user-actions button.permissions-icon-action.is-active { border-color: #cbd8f2; background: #edf3ff; color: var(--color-primary); }
+.permissions-account-edit-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 18px; background: #172033a8; backdrop-filter: blur(3px); }
+.permissions-account-edit-dialog { width: min(940px, 100%); max-height: min(92vh, 760px); overflow: auto; padding: 26px 28px 24px; border: 1px solid #dce4f0; border-radius: 18px; background: #fff; box-shadow: 0 24px 70px #101b3370; }
+.permissions-account-edit-dialog > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding-bottom: 15px; border-bottom: 1px solid #e9eef5; }
+.permissions-account-edit-dialog > header h2 { margin: 0; color: #17233a; font-size: 23px; }
+.permissions-account-edit-dialog > header p { margin: 7px 0 0; color: #71839f; font-size: 14px; }
+.permissions-account-edit-dialog > header > button { display: grid; width: 38px; height: 38px; place-items: center; border: 0; border-radius: 10px; background: #f1f5f9; color: #64748b; cursor: pointer; }
+.permissions-account-edit-dialog form { padding-top: 18px; }
+.permissions-account-edit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.permissions-account-edit-grid label { display: grid; gap: 7px; color: #354762; font-size: 14px; }
+.permissions-account-edit-grid label.is-wide { grid-column: 1 / -1; }
+.permissions-account-edit-grid input, .permissions-account-edit-grid select { width: 100%; min-width: 0; height: 46px; padding: 0 14px; border: 1px solid #d9e2ee; border-radius: 11px; outline: 0; background: #fff; color: #273a56; font: inherit; }
+.permissions-account-edit-grid input:focus, .permissions-account-edit-grid select:focus { border-color: #7966ff; box-shadow: 0 0 0 3px #7462ff20; }
+.permissions-account-edit-grid input::placeholder { color: #9aa8bb; }
+.permissions-account-edit-dialog form footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 26px; padding-top: 20px; border-top: 1px solid #e9eef5; }
+.permissions-account-edit-dialog form footer button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; gap: 8px; padding: 0 17px; border: 0; border-radius: 10px; background: transparent; color: #51627b; font: inherit; font-weight: 650; cursor: pointer; }
+.permissions-account-edit-dialog form footer button.workspace-primary { border-color: var(--color-primary); background: var(--color-primary); color: #fff; }
+.permissions-account-edit-dialog form footer button:disabled, .permissions-account-edit-dialog > header > button:disabled { opacity: .6; cursor: not-allowed; }
+@media (max-width: 640px) { .permissions-account-edit-backdrop { align-items: end; padding: 0; } .permissions-account-edit-dialog { max-height: 92vh; padding: 22px 17px 18px; border-radius: 18px 18px 0 0; } .permissions-account-edit-dialog > header h2 { font-size: 20px; } .permissions-account-edit-dialog > header p { font-size: 12px; line-height: 1.5; } .permissions-account-edit-grid { grid-template-columns: 1fr; gap: 13px; } .permissions-account-edit-grid label.is-wide { grid-column: auto; } .permissions-account-edit-dialog form footer { position: sticky; bottom: -18px; margin: 18px -17px -18px; padding: 14px 17px 18px; background: #fff; } }
+
+.permissions-matrix-backdrop { position: fixed; z-index: 1200; inset: 0; display: grid; place-items: center; padding: 20px; background: #172033a8; backdrop-filter: blur(3px); }
+.permissions-matrix-backdrop .permissions-matrix-panel { position: relative; display: flex; width: min(1320px, 100%); max-height: min(92vh, 1000px); flex-direction: column; margin: 0; }
+.permissions-matrix-backdrop .permissions-matrix-heading { position: relative; padding-right: 62px; }
+.permissions-matrix-backdrop .permissions-matrix-scroll { max-height: none; flex: 1; }
+.permissions-matrix-close { position: absolute; z-index: 6; top: 12px; right: 12px; display: grid; width: 36px; height: 36px; place-items: center; border: 0; border-radius: 9px; background: #f1f5f9; color: #64748b; cursor: pointer; }
+.permissions-matrix-close:disabled { opacity: .55; cursor: not-allowed; }
+@media (max-width: 680px) { .permissions-matrix-backdrop { align-items: end; padding: 0; } .permissions-matrix-backdrop .permissions-matrix-panel { max-height: 94vh; border-radius: 16px 16px 0 0; } .permissions-matrix-backdrop .permissions-matrix-heading { padding: 18px 56px 14px 16px; } .permissions-matrix-backdrop .permissions-legend { gap: 10px; font-size: 11px; } }
