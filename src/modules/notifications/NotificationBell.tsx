@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { formatDateTime } from "../../lib/date-format";
 import { notificationService, type AppNotification } from "./notification.service";
+import "./notification.css";
 
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
