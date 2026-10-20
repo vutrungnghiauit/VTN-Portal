@@ -1,0 +1,6 @@
+.quick-filter-heading { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; width: 100%; color: #64748b; font-size: 12px; line-height: 1.4; }
+.quick-filter-heading strong { display: inline-flex; align-items: center; gap: 7px; color: #293a55; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.quick-filter-heading strong svg { color: #3568d4; }
+.quick-filter-clear-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; margin-left: auto; padding: 0 10px; border: 1px solid #e5eaf1; border-radius: 7px; background: #fff; color: #94a3b8; font: inherit; font-size: 11px; white-space: nowrap; cursor: pointer; }
+.quick-filter-clear-button:hover:not(:disabled) { border-color: #a9bce3; background: #f8faff; color: #283898; }
+.quick-filter-clear-button:disabled { opacity: .7; cursor: not-allowed; }
