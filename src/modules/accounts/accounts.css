@@ -60,3 +60,7 @@
 .accounts-modal-actions > button.accounts-delete-confirm { border-color: #dc2626; background: #dc2626; color: #fff; font-weight: 700; }
 .accounts-modal-actions > button.accounts-delete-confirm:hover { border-color: #b91c1c; background: #b91c1c; }
 .accounts-modal-actions > button.accounts-delete-confirm:disabled { border-color: #fca5a5; background: #fca5a5; color: #fff; cursor: wait; }
+.accounts-password-dialog > p { margin: -8px 0 4px; color: #475569; font-size: 13px; }
+.accounts-password-field { display: grid; gap: 7px; color: #334155; font-size: 13px; font-weight: 650; }
+.accounts-password-field input { min-height: 42px; padding: 0 11px; border: 1px solid #cbd5e1; border-radius: 7px; font: inherit; font-weight: 400; }
+.accounts-password-dialog > small { color: #64748b; font-size: 12px; }
