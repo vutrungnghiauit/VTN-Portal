@@ -1,0 +1,45 @@
+.teaching-week-view, .teaching-week-view * { box-sizing: border-box; }
+.teaching-week-view { margin: 14px 0; overflow: hidden; border: 1px solid #dce5f2; border-radius: 10px; background: #fff; box-shadow: 0 2px 8px #1b2b4a06; }
+.teaching-week-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; }
+.teaching-week-toolbar h2 { display: flex; min-width: 0; align-items: center; gap: 9px; margin: 0; color: #17496e; font-size: clamp(15px, 1.15vw, 18px); line-height: 1.35; overflow-wrap: anywhere; }
+.teaching-week-toolbar h2 svg { flex: 0 0 auto; color: #2478a8; }
+.teaching-week-controls { display: flex; min-width: 0; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.teaching-week-controls button { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; gap: 6px; padding: 7px 11px; border: 1px solid #cfe0ee; border-radius: 6px; background: #f3f8fc; color: #225b7b; font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer; }
+.teaching-week-controls button:hover { border-color: #8bb8d7; background: #eaf4fb; }
+.teaching-week-controls .teaching-week-current { border-color: #c5e3f8; background: #e5f4ff; color: #17638f; }
+.teaching-week-date { position: relative; display: flex; align-items: center; }
+.teaching-week-date input { width: 165px; height: 38px; padding: 0 36px 0 10px; border: 1px solid #d7e1eb; border-radius: 6px; background: #fff; color: #334155; font: inherit; font-size: 13px; }
+.teaching-week-date > svg { position: absolute; right: 10px; color: #287798; pointer-events: none; }
+.teaching-week-date .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+.teaching-week-scroll { overflow-x: auto; border-top: 1px solid #e1e8f0; border-bottom: 1px solid #e1e8f0; }
+.teaching-week-grid { width: 100%; min-width: 1540px; table-layout: fixed; border-collapse: collapse; }
+.teaching-week-grid th, .teaching-week-grid td { border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; }
+.teaching-week-grid tr > :last-child { border-right: 0; }
+.teaching-week-grid thead th { height: 58px; padding: 8px 5px; background: #e9eff7; color: #16445e; font-size: clamp(12px, .9vw, 14px); font-weight: 750; line-height: 1.35; text-align: center; overflow-wrap: anywhere; }
+.teaching-week-grid thead th:first-child { width: 110px; }
+.teaching-week-grid thead th span { display: block; margin-top: 4px; font-size: clamp(11px, .82vw, 13px); font-weight: 700; }
+.teaching-week-grid thead th.today { background: #dceeff; color: #165e9a; }
+.teaching-week-grid tbody th { width: 110px; padding: 6px; background: #fffbc9; color: #334155; font-size: clamp(12px, .85vw, 13px); font-weight: 700; line-height: 1.35; text-align: center; overflow-wrap: anywhere; }
+.teaching-week-grid tbody td { height: 145px; padding: 8px; vertical-align: top; background-color: #fff; background-image: linear-gradient(#e9edf3 1px, transparent 1px), linear-gradient(90deg, #e9edf3 1px, transparent 1px); background-size: 12px 12px; }
+.teaching-week-grid tbody td.today { background-color: #eff7ff; box-shadow: inset 0 0 0 2px #abd0ef; }
+.teaching-week-cell-events { display: grid; min-width: 0; gap: 6px; }
+.teaching-week-event { display: grid; width: 100%; max-width: 100%; min-width: 0; gap: 5px; padding: 8px; overflow: hidden; border: 1px solid #cbd7e6; border-radius: 6px; background: #e7edf5; color: #28536f; text-align: center; box-shadow: 0 1px 2px #172b4d12; }
+.teaching-week-event strong { display: block; min-width: 0; color: #17496e; font-size: clamp(11px, .82vw, 13px); line-height: 1.35; overflow-wrap: anywhere; word-break: normal; }
+.teaching-week-event strong span { font-weight: 550; }
+.teaching-week-event small { display: block; min-width: 0; color: #315a78; font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; word-break: normal; }
+.teaching-week-event > span { display: flex; min-width: 0; align-items: center; justify-content: center; gap: 4px; color: #315a78; font-size: clamp(10px, .75vw, 12px); line-height: 1.35; overflow-wrap: anywhere; word-break: normal; }
+.teaching-week-event > span svg { flex: 0 0 auto; }
+.teaching-week-event.practice { border-color: #b7dda8; background: #e4f5dc; }
+.teaching-week-event.online { border-color: #b8def0; background: #e0f4ff; }
+.teaching-week-event.exam { border-color: #f2dc8b; background: #fff5c8; }
+.teaching-week-event.cancelled { border-color: #f5aaa5; background: #ffe1df; color: #8f2522; }
+.teaching-week-event.cancelled strong, .teaching-week-event.cancelled small, .teaching-week-event.cancelled > span { color: #8f2522; }
+.teaching-week-legend { display: flex; flex-wrap: wrap; gap: 16px; padding: 10px 14px; color: #475569; font-size: 12px; }
+.teaching-week-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.teaching-week-legend i { width: 14px; height: 12px; border: 1px solid #ccd5df; background: #e7edf5; }
+.teaching-week-legend i.practice { border-color: #b7dda8; background: #71c83d; }
+.teaching-week-legend i.online { border-color: #b8def0; background: #b9e9fa; }
+.teaching-week-legend i.exam { border-color: #f2dc8b; background: #fff168; }
+.teaching-week-legend i.cancelled { border-color: #f5aaa5; background: #ed2424; }
+.teaching-week-empty { margin: 0; padding: 0 14px 14px; color: #64748b; font-size: 13px; }
+@media (max-width: 800px) { .teaching-week-toolbar { align-items: flex-start; flex-direction: column; } .teaching-week-controls { width: 100%; flex-wrap: wrap; } .teaching-week-controls > * { flex: 1 1 135px; } .teaching-week-date input { width: 100%; } }
