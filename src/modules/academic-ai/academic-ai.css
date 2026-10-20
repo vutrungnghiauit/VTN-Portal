@@ -53,5 +53,21 @@
 .academic-ai-empty { display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 70px 15px; color: #94a3b8; text-align: center; }
 .academic-ai-empty strong { color: #334155; font-size: 13px; }
 .academic-ai-empty span { color: #64748b; font-size: 12px; }
+.academic-ai-source-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.academic-ai-source-picker { margin-top: 14px; padding: 14px; border: 1px solid #dce5f1; border-radius: 9px; background: #f8fafc; }
+.academic-ai-source-picker-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid #e4eaf2; }
+.academic-ai-source-picker-heading strong, .academic-ai-source-picker-heading span { display: block; }
+.academic-ai-source-picker-heading strong { color: #334155; font-size: 13px; }
+.academic-ai-source-picker-heading span { margin-top: 4px; color: #718096; font-size: 12px; line-height: 1.5; }
+.academic-ai-source-picker-heading > button, .academic-ai-source-picker-actions > button:first-child { padding: 7px 10px; border: 1px solid #dce3ee; border-radius: 7px; background: white; color: #475569; cursor: pointer; }
+.academic-ai-source-picker-list { display: grid; gap: 5px; max-height: 240px; overflow: auto; padding: 10px 0; }
+.academic-ai-source-picker-item { display: flex; align-items: center; gap: 10px; padding: 9px; border: 1px solid transparent; border-radius: 7px; background: white; cursor: pointer; }
+.academic-ai-source-picker-item:hover { border-color: #cbd9f0; }
+.academic-ai-source-picker-item input { flex: 0 0 auto; accent-color: #283898; }
+.academic-ai-source-picker-item span, .academic-ai-source-picker-item strong, .academic-ai-source-picker-item small { display: block; min-width: 0; }
+.academic-ai-source-picker-item strong { overflow: hidden; color: #334155; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.academic-ai-source-picker-item small { margin-top: 4px; color: #7b8797; font-size: 11px; }
+.academic-ai-source-picker-empty { padding: 24px 8px; color: #718096; font-size: 12px; text-align: center; }
+.academic-ai-source-picker-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 10px; border-top: 1px solid #e4eaf2; }
 @media (max-width: 920px) { .academic-ai-layout { grid-template-columns: 1fr; } .academic-ai-side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 15px; } .academic-ai-side-icon, .academic-ai-side h2, .academic-ai-side > p, .academic-ai-privacy, .academic-ai-role { grid-column: 1 / -1; } .academic-ai-chat-scroll { max-height: 55vh; } }
-@media (max-width: 620px) { .academic-ai-page .workspace-title-row { align-items: flex-start; flex-direction: column; } .academic-ai-trust { align-self: flex-start; } .academic-ai-chat { min-height: 570px; } .academic-ai-chat-scroll { min-height: 360px; padding: 14px; } .academic-ai-compose-tools { align-items: flex-start; flex-direction: column; } .academic-ai-compose { padding: 0 10px 10px; } .academic-ai-compose .workspace-primary { min-width: 42px; padding: 8px; } .academic-ai-compose .workspace-primary svg { margin: 0; } .academic-ai-compose .workspace-primary { font-size: 0; } .academic-ai-source-intro { align-items: flex-start; flex-direction: column; } .academic-ai-source-intro .workspace-primary { width: 100%; } .academic-ai-side { display: block; } }
+@media (max-width: 620px) { .academic-ai-page .workspace-title-row { align-items: flex-start; flex-direction: column; } .academic-ai-trust { align-self: flex-start; } .academic-ai-chat { min-height: 570px; } .academic-ai-chat-scroll { min-height: 360px; padding: 14px; } .academic-ai-compose-tools { align-items: flex-start; flex-direction: column; } .academic-ai-compose { padding: 0 10px 10px; } .academic-ai-compose .workspace-primary { min-width: 42px; padding: 8px; } .academic-ai-compose .workspace-primary svg { margin: 0; } .academic-ai-compose .workspace-primary { font-size: 0; } .academic-ai-source-intro { align-items: flex-start; flex-direction: column; } .academic-ai-source-actions { width: 100%; flex-direction: column; } .academic-ai-source-actions .workspace-primary { width: 100%; } .academic-ai-source-picker-actions { align-items: stretch; flex-direction: column-reverse; } .academic-ai-source-picker-actions button { width: 100%; } .academic-ai-side { display: block; } }
