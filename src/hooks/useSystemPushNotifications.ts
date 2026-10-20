@@ -3,10 +3,14 @@ import { supabase } from "../lib/supabase";
 
 type SupportTicketRow = {
   id: string;
+  ticket_code: string | null;
   title: string;
   description: string;
   category: string;
-  student_user_id: string;
+  student_user_id: string | null;
+  student_record_id: string | null;
+  student_code: string | null;
+  student_name: string | null;
   teacher_id: string;
   created_at: string;
 };
@@ -41,9 +45,10 @@ function playDing() {
 }
 
 function ticketCode(ticket: SupportTicketRow) {
+  if (ticket.ticket_code) return ticket.ticket_code;
   const year = new Date(ticket.created_at || Date.now()).getFullYear();
   const suffix = ticket.id.replace(/\D/g, "").slice(-3).padStart(3, "0");
-  return `TK-${year}-${suffix}`;
+  return `YC-${year}-${suffix}`;
 }
 
 export function usePushNotifications(enabled: boolean, role: string) {
@@ -86,21 +91,24 @@ export function usePushNotifications(enabled: boolean, role: string) {
     if (!enabled || !supabase) return;
     let active = true;
     let channel: ReturnType<NonNullable<typeof supabase>["channel"]> | undefined;
-    const test = () => publish({ id: "push-test", code: `TK-${new Date().getFullYear()}-892`, studentName: "Nguyễn Minh Anh", className: "23DQT1A", title: "Kiểm tra thông báo đẩy", summary: "Đây là thông báo thử để xác nhận luồng nhận phiếu hỗ trợ." });
+    const test = () => publish({ id: "push-test", code: `YC-${new Date().getFullYear()}-892`, studentName: "Nguyễn Minh Anh", className: "23DQT1A", title: "Kiểm tra thông báo đẩy", summary: "Đây là thông báo thử để xác nhận luồng nhận phiếu hỗ trợ." });
     window.addEventListener("vtn-test-push-notification", test);
 
     void supabase.auth.getUser().then(async ({ data, error }) => {
       if (!active || error || !data.user || !supabase) return;
       const currentUserId = data.user.id;
-      const ticketFilter = role === "teacher" || role === "assistant" ? `teacher_id=eq.${currentUserId}` : undefined;
       const subscription = supabase.channel(`support-ticket-push-${currentUserId}`)
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "support_tickets", ...(ticketFilter ? { filter: ticketFilter } : {}) }, async ({ new: row }) => {
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "support_tickets" }, async ({ new: row }) => {
           const ticket = row as SupportTicketRow;
-          if ((role === "teacher" || role === "assistant") && ticket.teacher_id !== currentUserId) return;
-          const { data: student } = await supabase!.from("students").select("full_name,class_name").eq("auth_user_id", ticket.student_user_id).eq("owner_id", ticket.teacher_id).is("deleted_at", null).limit(1).maybeSingle();
+          const studentQuery = supabase!.from("students").select("full_name,class_name").is("deleted_at", null);
+          const { data: student } = ticket.student_record_id
+            ? await studentQuery.eq("id", ticket.student_record_id).maybeSingle()
+            : ticket.student_user_id
+              ? await studentQuery.eq("auth_user_id", ticket.student_user_id).eq("owner_id", ticket.teacher_id).limit(1).maybeSingle()
+              : { data: null };
           if (!active) return;
           const summary = ticket.description.replace(/\s+/g, " ").trim();
-          publish({ id: ticket.id, code: ticketCode(ticket), studentName: student?.full_name ?? "Sinh viên", className: student?.class_name ?? "Chưa có lớp", title: ticket.title || ticket.category || "Phiếu hỗ trợ mới", summary: summary.length > 150 ? `${summary.slice(0, 147)}…` : summary });
+          publish({ id: ticket.id, code: ticketCode(ticket), studentName: student?.full_name ?? ticket.student_name ?? "Sinh viên", className: student?.class_name ?? "Chưa có lớp", title: ticket.title || ticket.category || "Phiếu hỗ trợ mới", summary: summary.length > 150 ? `${summary.slice(0, 147)}…` : summary });
         })
         .subscribe();
       channel = subscription;
