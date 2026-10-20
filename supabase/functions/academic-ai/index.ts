@@ -19,6 +19,16 @@ async function openAi(path: string, init: RequestInit = {}) {
   return response;
 }
 
+async function deleteOpenAiResource(path: string) {
+  const apiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!apiKey) throw new Error("Chưa cấu hình OPENAI_API_KEY để dọn tài liệu Học vụ AI.");
+  const response = await fetch(`https://api.openai.com/v1${path}`, { method: "DELETE", headers: { Authorization: `Bearer ${apiKey}` } });
+  if (!response.ok && response.status !== 404) {
+    const detail = await response.text();
+    throw new Error(`OpenAI API (${response.status}): ${detail.slice(0, 500)}`);
+  }
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (request.method !== "POST") return json({ error: "Chỉ hỗ trợ POST." }, 405);
@@ -34,15 +44,30 @@ Deno.serve(async (request) => {
     const adminClient = createClient(url, serviceKey, { auth: { persistSession: false } });
     const body = await request.json(); const action = String(body.action ?? "");
 
-    const permissionFor: Record<string, string> = { "list-sources": "read", "upload-source": "create", "delete-source": "delete", chat: "read" };
+    const permissionFor: Record<string, string> = { "list-sources": "read", "upload-source": "create", "delete-source": "delete", "purge-source": "delete", chat: "read" };
+    const tabFor: Record<string, string> = { "list-sources": "sources", "upload-source": "sources", "delete-source": "sources", "purge-source": "sources", chat: "chat" };
     const requiredAction = permissionFor[action];
     if (!requiredAction) return json({ error: "Thao tác không hợp lệ." }, 400);
     const { data: allowed, error: permissionError } = await userClient.rpc("can_access_module", { p_module: "academic-ai", p_action: requiredAction });
     if (permissionError) throw permissionError;
     if (!allowed) return json({ error: "Tài khoản chưa được cấp quyền cho thao tác này." }, 403);
+    if (action === "upload-source") {
+      const { data: mayUpdate, error: updatePermissionError } = await userClient.rpc("can_access_module", { p_module: "academic-ai", p_action: "update" });
+      if (updatePermissionError) throw updatePermissionError;
+      if (!mayUpdate) return json({ error: "Cần quyền thêm và cập nhật nguồn dữ liệu." }, 403);
+    }
+    const { data: tabAllowed, error: tabPermissionError } = await userClient.rpc("can_access_module", { p_module: `tab:academic-ai:${tabFor[action]}`, p_action: "read" });
+    if (tabPermissionError) throw tabPermissionError;
+    if (!tabAllowed) return json({ error: "Tài khoản chưa được cấp quyền cho tab này." }, 403);
+
+    if (action === "purge-source") {
+      const { data: mayPurgeTrash, error: trashPermissionError } = await userClient.rpc("can_access_module", { p_module: "trash", p_action: "delete" });
+      if (trashPermissionError) throw trashPermissionError;
+      if (!mayPurgeTrash) return json({ error: "Bạn chưa được cấp quyền xóa vĩnh viễn trong Thùng rác." }, 403);
+    }
 
     if (action === "list-sources") {
-      const { data, error } = await adminClient.from("academic_ai_sources").select("id,title,file_name,mime_type,status,created_at").order("created_at", { ascending: false });
+      const { data, error } = await adminClient.from("academic_ai_sources").select("id,title,file_name,mime_type,status,created_at").is("deleted_at", null).order("created_at", { ascending: false });
       if (error) throw error;
       return json({ sources: data ?? [] });
     }
@@ -85,19 +110,30 @@ Deno.serve(async (request) => {
 
     if (action === "delete-source") {
       const sourceId = String(body.sourceId ?? "");
-      const { data: source, error: findError } = await adminClient.from("academic_ai_sources").select("id,openai_file_id,vector_store_id").eq("id", sourceId).maybeSingle();
+      const { data: source, error: findError } = await adminClient.from("academic_ai_sources").select("id,openai_file_id,vector_store_id").eq("id", sourceId).is("deleted_at", null).maybeSingle();
       if (findError) throw findError;
       if (!source) return json({ error: "Không tìm thấy nguồn tài liệu." }, 404);
-      await openAi(`/vector_stores/${source.vector_store_id}`, { method: "DELETE" });
-      await openAi(`/files/${source.openai_file_id}`, { method: "DELETE" }).catch(() => undefined);
-      const { error } = await adminClient.from("academic_ai_sources").delete().eq("id", source.id);
+      const { error } = await adminClient.from("academic_ai_sources").update({ deleted_at: new Date().toISOString() }).eq("id", source.id);
       if (error) throw error;
+      return json({ success: true });
+    }
+
+    if (action === "purge-source") {
+      const sourceId = String(body.sourceId ?? "");
+      const { data: source, error: findError } = await adminClient.from("academic_ai_sources").select("id,openai_file_id,vector_store_id,deleted_at,purge_at").eq("id", sourceId).not("deleted_at", "is", null).maybeSingle();
+      if (findError) throw findError;
+      if (!source) return json({ error: "Không tìm thấy tài liệu trong thùng rác." }, 404);
+      if (body.expiredOnly === true && (!source.purge_at || new Date(source.purge_at).getTime() > Date.now())) return json({ error: "Tài liệu chưa hết thời hạn lưu trữ." }, 409);
+      if (source.vector_store_id) await deleteOpenAiResource(`/vector_stores/${source.vector_store_id}`);
+      if (source.openai_file_id) await deleteOpenAiResource(`/files/${source.openai_file_id}`);
+      const { error: deleteError } = await adminClient.from("academic_ai_sources").delete().eq("id", source.id).not("deleted_at", "is", null);
+      if (deleteError) throw deleteError;
       return json({ success: true });
     }
 
     const question = String(body.question ?? "").trim().slice(0, 6000);
     if (!question) return json({ error: "Hãy nhập câu hỏi trước khi gửi." }, 400);
-    const { data: sources, error: sourceError } = await adminClient.from("academic_ai_sources").select("title,file_name,vector_store_id").eq("status", "ready");
+    const { data: sources, error: sourceError } = await adminClient.from("academic_ai_sources").select("title,file_name,vector_store_id").eq("status", "ready").is("deleted_at", null);
     if (sourceError) throw sourceError;
     const vectorStoreIds = [...new Set((sources ?? []).map((source) => source.vector_store_id))];
     const tools: Array<Record<string, unknown>> = [];
