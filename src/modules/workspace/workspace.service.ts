@@ -1,6 +1,6 @@
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 
-export type WorkspaceRecord = { id: string; module_key: string; external_id?: string | null; data: Record<string, string | number | null>; created_at: string; updated_at: string; deleted_at: string | null; purge_at: string | null };
+export type WorkspaceRecord = { id: string; module_key: string; external_id?: string | null; owner_id?: string; data: Record<string, string | number | null>; created_at: string; updated_at: string; deleted_at: string | null; purge_at: string | null };
 
 function db() {
   if (!isSupabaseConfigured || !supabase) throw new Error("Chưa cấu hình Supabase. Kiểm tra .env.local rồi khởi động lại ứng dụng.");
@@ -20,7 +20,7 @@ export const workspaceService = {
     const rows: WorkspaceRecord[] = [];
     const pageSize = 500;
     for (let from = 0; ; from += pageSize) {
-      let query = db().from("workspace_records").select("id, module_key, external_id, data, created_at, updated_at, deleted_at, purge_at").eq("module_key", moduleKey).order("updated_at", { ascending: false });
+      let query = db().from("workspace_records").select("id, module_key, external_id, owner_id, data, created_at, updated_at, deleted_at, purge_at").eq("module_key", moduleKey).order("updated_at", { ascending: false }).order("id", { ascending: true });
       query = includeDeleted ? query.not("deleted_at", "is", null) : query.is("deleted_at", null);
       const { data, error } = await query.range(from, from + pageSize - 1);
       if (error) throw new Error(error.code === "42P01" || error.code === "PGRST205" ? "Chưa tạo bảng workspace_records. Hãy chạy supabase/workspace.sql trong SQL Editor." : error.message);
