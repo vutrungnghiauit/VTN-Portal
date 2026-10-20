@@ -90,13 +90,14 @@ export const studentService = {
         .select("id, student_code, full_name, date_of_birth, class_name, faculty, semester_name, academic_status, email, phone, notes, created_at, purge_at, auth_user_id")
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
+        .order("id", { ascending: true })
         .range(from, from + pageSize - 1);
       if (error) throw friendlyError(error);
       const page = (data ?? []) as StudentRow[];
       rows.push(...page);
       if (page.length < pageSize) break;
     }
-    return rows.map(mapStudent);
+    return [...new Map(rows.map((row) => [row.id, row])).values()].map(mapStudent);
   },
 
   async save(input: StudentInput, id?: string): Promise<Student> {
@@ -127,13 +128,13 @@ export const studentService = {
     for (let from = 0; ; from += pageSize) {
       const { data, error } = await client().from("students")
         .select("id, student_code, full_name, date_of_birth, class_name, faculty, semester_name, academic_status, email, phone, notes, created_at, purge_at, auth_user_id")
-        .not("deleted_at", "is", null).order("deleted_at", { ascending: false }).range(from, from + pageSize - 1);
+        .not("deleted_at", "is", null).order("deleted_at", { ascending: false }).order("id", { ascending: true }).range(from, from + pageSize - 1);
       if (error) throw friendlyError(error);
       const page = (data ?? []) as StudentRow[];
       rows.push(...page);
       if (page.length < pageSize) break;
     }
-    return rows.map(mapStudent);
+    return [...new Map(rows.map((row) => [row.id, row])).values()].map(mapStudent);
   },
 
   async restore(id: string): Promise<void> {
