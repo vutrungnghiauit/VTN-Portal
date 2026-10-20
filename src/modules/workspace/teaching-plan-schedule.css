@@ -12,7 +12,12 @@
 .teaching-schedule-heading strong { color: #1e293b; font-size: 14px; }
 .teaching-schedule-heading small { margin-top: 3px; color: #64748b; font-size: 12px; }
 .teaching-schedule-toolbar > label { display: flex; align-items: center; gap: 10px; color: #475569; font-size: 12px; font-weight: 600; }
-.teaching-schedule-toolbar select { min-width: 150px; height: 38px; padding: 0 11px; border: 1px solid #dce3ee; border-radius: 7px; background: #fff; color: #1e293b; font: inherit; }
+.teaching-schedule-toolbar > .teaching-period-controls .searchable-filter { min-width: 150px; flex: 0 0 160px; }
+.teaching-period-controls { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.teaching-period-controls label { display: flex; align-items: center; gap: 8px; color: #475569; font-size: 12px; font-weight: 600; }
+.teaching-current-date { display: inline-flex; min-height: 38px; align-items: center; gap: 7px; padding: 5px 10px; border: 1px solid #c8ddfb; border-radius: 8px; background: #eaf3ff; color: #2458a6; font-size: 12px; }
+.teaching-current-date > strong { color: #1d4ed8; font-variant-numeric: tabular-nums; }
+.teaching-current-date > small { padding-left: 6px; border-left: 1px solid #c8ddfb; color: #4772ad; font-size: 11px; }
 .teaching-schedule-legend { display: flex; flex-wrap: wrap; gap: 17px; margin: 0 2px 14px; color: #64748b; font-size: 12px; }
 .teaching-schedule-legend span { display: inline-flex; align-items: center; gap: 7px; }
 .teaching-schedule-legend i { width: 11px; height: 11px; border-radius: 3px; }
@@ -20,7 +25,9 @@
 .teaching-schedule-legend .holiday { background: #ff8a7a; }
 .teaching-schedule-legend .planned { background: #70c058; }
 .teaching-term-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 12px; }
+.teaching-term-grid.is-term-selected { grid-template-columns: minmax(0, 1fr); }
 .teaching-term-card { min-width: 0; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 9px; background: #fff; box-shadow: 0 2px 8px #1b2b4a06; }
+.teaching-term-card.is-current { border-color: #a9c9f2; box-shadow: 0 0 0 1px #dcecff, 0 2px 8px #1b2b4a06; }
 .teaching-term-card > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 13px 14px; border-bottom: 1px solid #e8edf5; background: #f8faff; }
 .teaching-term-card > header span, .teaching-term-card > header strong { display: block; }
 .teaching-term-card > header span { margin-bottom: 4px; color: #64748b; font-size: 12px; }
@@ -40,6 +47,7 @@
 .teaching-calendar-scroll tbody tr.exam-week th { color: #9a3412; }
 .teaching-calendar-scroll tbody td.holiday { background: #ffe3d5; color: #9a3412; font-weight: 700; }
 .teaching-calendar-scroll tbody td.planned { background: #e3f4d9; color: #245a20; font-weight: 700; }
+.teaching-calendar-scroll tbody td.today { background: #dcecff; color: #1d4ed8; font-weight: 800; box-shadow: inset 0 0 0 2px #8bb8f0; }
 .teaching-schedule-note { margin: 14px 2px 0 !important; color: #64748b !important; font-size: 12px !important; line-height: 1.65; }
 .teaching-plan-event { display: block !important; overflow: hidden; margin-top: 2px; padding: 2px 3px; border-radius: 3px; background: #dce8ff; color: #283898 !important; font-size: 12px !important; text-overflow: ellipsis; white-space: nowrap; }
 .teaching-plan-event { width: 100%; border: 0; text-align: left; cursor: pointer; }
@@ -47,12 +55,68 @@
 .workspace-row-actions .teaching-plan-edit-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; width: auto; height: 31px; padding: 0 9px; border: 1px solid #cbd8f1; border-radius: 6px; background: #f4f7ff; color: #283898; font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
 .teaching-plan-edit-button:hover { border-color: #8ba8e8; background: #edf3ff; }
 .teaching-plans-list { margin-top: 22px; }
-.teaching-plans-list-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.teaching-plans-list-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .teaching-plans-list-head h2 { margin: 0 0 4px; color: #1e293b; font-size: 17px; }
 .teaching-plans-list-head p { margin: 0; color: #64748b; font-size: 12px; }
-.teaching-plans-list-head > span { color: #64748b; font-size: 12px; }
+.teaching-plans-list-tools { display: flex; align-items: center; gap: 10px; }
+.teaching-plans-list-tools > span { color: #64748b; font-size: 12px; white-space: nowrap; }
+.teaching-plan-create-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 7px 12px; border: 1px solid #283898; border-radius: 7px; background: #283898; color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.teaching-plan-create-button:hover { border-color: #1d2c79; background: #1d2c79; }
 .teaching-plan-form { margin-top: 8px; }
 .teaching-plan-form select, .teaching-plan-form input[type="date"] { min-height: 38px; }
-@media (max-width: 1100px) { .teaching-term-grid { grid-template-columns: 1fr; } .teaching-calendar-scroll table { min-width: 0; } .teaching-calendar-scroll tbody td small { display: block; overflow: hidden; max-width: 54px; color: inherit; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; } }
-@media (max-width: 620px) { .teaching-schedule-toolbar { align-items: flex-start; flex-direction: column; } .teaching-schedule-toolbar > label { width: 100%; justify-content: space-between; } .teaching-schedule-actions { width: 100%; flex-wrap: wrap; } .teaching-schedule-actions button, .teaching-upload-button { flex: 1 1 42%; justify-content: center; } .teaching-schedule-page .workspace-title-row { width: 100%; } .teaching-plans-list-head { align-items: flex-start; flex-direction: column; } }
-@media print { .teaching-schedule-page .workspace-breadcrumb, .teaching-schedule-actions, .teaching-schedule-toolbar > label, .teaching-schedule-legend { display: none !important; } .teaching-schedule-page { max-width: none; } .teaching-term-grid { grid-template-columns: repeat(3, 1fr); gap: 5px; } .teaching-term-card { break-inside: avoid; box-shadow: none; } .teaching-calendar-scroll table { min-width: 0; } .teaching-calendar-scroll thead th, .teaching-calendar-scroll tbody td { font-size: 7px; } }
+.teaching-term-open { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.teaching-term-open span, .teaching-term-open strong { display: block; }
+.teaching-term-open span { margin-bottom: 4px; color: #64748b; font-size: 12px; }
+.teaching-term-open span em { display: inline-flex; align-items: center; margin-left: 7px; padding: 2px 7px; border-radius: 999px; background: #e3efff; color: #2458a6; font-size: 10px; font-style: normal; font-weight: 700; vertical-align: middle; }
+.teaching-term-open strong { color: #283898; font-size: 13px; }
+.teaching-term-open small { display: inline-flex; align-items: center; gap: 4px; margin-top: 7px; color: #52627a; font-size: 11px; }
+.teaching-term-open:hover small, .teaching-term-open:focus-visible small { color: #214db2; }
+.teaching-term-open:focus-visible { outline: 2px solid #6288e8; outline-offset: 3px; border-radius: 3px; }
+.teaching-calendar-scroll tbody td[role="button"] { cursor: pointer; }
+.teaching-calendar-scroll tbody td[role="button"]:hover { box-shadow: inset 0 0 0 2px #6789df; }
+.teaching-schedule-modal-backdrop { position: fixed; z-index: 1200; inset: 0; display: grid; place-items: center; padding: 2vh 2vw; background: rgb(15 23 42 / 58%); }
+.teaching-schedule-modal { display: flex; width: min(96vw, 1720px); height: min(96vh, 1100px); min-height: 360px; flex-direction: column; overflow: hidden; border: 1px solid #dbe3ef; border-radius: 12px; background: #fff; box-shadow: 0 24px 80px rgb(15 23 42 / 28%); }
+.teaching-schedule-modal-header { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 20px; padding: 16px 22px; border-bottom: 1px solid #e4eaf2; background: #f8faff; }
+.teaching-schedule-modal-header small { color: #64748b; font-size: 12px; }
+.teaching-schedule-modal-header h2 { margin: 4px 0 5px; color: #1e293b; font-size: 21px; }
+.teaching-schedule-modal-header strong { color: #283898; font-size: 13px; }
+.teaching-schedule-modal-close { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border: 1px solid #dce3ee; border-radius: 8px; background: #fff; color: #52627a; cursor: pointer; }
+.teaching-schedule-modal-close:hover { color: #1e3a8a; border-color: #9cb2e5; }
+.teaching-schedule-modal-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 18px 20px; }
+.teaching-calendar-modal-scroll { padding-bottom: 2px; }
+.teaching-calendar-modal-scroll table { min-width: 920px; }
+.teaching-calendar-modal-scroll thead th { padding: 12px 6px; font-size: 13px; }
+.teaching-calendar-modal-scroll tbody th, .teaching-calendar-modal-scroll tbody td { height: 58px; padding: 5px; font-size: 13px; }
+.teaching-calendar-modal-scroll tbody td small { display: block; overflow: visible; max-width: none; white-space: normal; line-height: 1.3; }
+.teaching-calendar-modal-scroll .teaching-plan-event { white-space: normal; }
+.teaching-schedule-modal-legend { margin-bottom: 12px; }
+.teaching-schedule-editor { margin: 0 0 18px; padding: 15px; border: 1px solid #dce5f2; border-radius: 9px; background: #f8faff; }
+.teaching-schedule-editor-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 13px; }
+.teaching-schedule-editor-head h3 { margin: 0; color: #1e293b; font-size: 15px; }
+.teaching-schedule-editor-head p { margin: 4px 0 0; color: #64748b; font-size: 12px; }
+.teaching-schedule-add-mark { display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 6px 10px; border: 1px solid #cbd8f1; border-radius: 6px; background: #fff; color: #283898; font-size: 12px; cursor: pointer; }
+.teaching-schedule-editor-fields { display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)); gap: 10px; }
+.teaching-schedule-editor label { display: flex; min-width: 0; flex-direction: column; gap: 5px; color: #475569; font-size: 12px; font-weight: 600; }
+.teaching-schedule-editor input, .teaching-schedule-editor select { width: 100%; min-height: 36px; padding: 6px 9px; border: 1px solid #d3dce9; border-radius: 6px; background: #fff; color: #1e293b; font: inherit; font-weight: 400; }
+.teaching-schedule-mark-list { display: grid; gap: 8px; margin-top: 12px; }
+.teaching-schedule-mark-row { display: grid; grid-template-columns: minmax(145px, 0.8fr) minmax(170px, 1fr) minmax(220px, 2fr) 34px; align-items: end; gap: 9px; }
+.teaching-schedule-mark-row > button { display: grid; place-items: center; width: 34px; height: 36px; border: 1px solid #f3c6c4; border-radius: 6px; background: #fff; color: #b42318; cursor: pointer; }
+.teaching-schedule-edit-error { margin: 12px 0 0; color: #b42318; font-size: 12px; }
+.teaching-schedule-modal-footer { display: flex; flex: 0 0 auto; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid #e4eaf2; background: #fff; }
+.teaching-schedule-modal-footer button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 37px; padding: 7px 13px; border: 1px solid #d7dfeb; border-radius: 7px; background: #fff; color: #334155; font-size: 12px; cursor: pointer; }
+.teaching-schedule-modal-footer .teaching-schedule-save { border-color: #283898; background: #283898; color: #fff; font-weight: 600; }
+.teaching-schedule-modal-footer .teaching-schedule-save:disabled { opacity: .65; cursor: wait; }
+@media (max-width: 740px) {
+  .teaching-schedule-modal-backdrop { padding: 0; }
+  .teaching-schedule-modal { width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+  .teaching-schedule-modal-header { padding: 13px 15px; }
+  .teaching-schedule-modal-header h2 { font-size: 18px; }
+  .teaching-schedule-modal-body { padding: 13px 12px; }
+  .teaching-schedule-editor-fields { grid-template-columns: 1fr; }
+  .teaching-schedule-mark-row { grid-template-columns: 1fr 1fr 34px; }
+  .teaching-schedule-mark-label { grid-column: 1 / 3; grid-row: 2; }
+  .teaching-schedule-mark-row > button { grid-column: 3; grid-row: 1 / 3; align-self: center; }
+}
+@media (max-width: 1100px) { .teaching-term-grid { grid-template-columns: 1fr; } .teaching-calendar-scroll:not(.teaching-calendar-modal-scroll) table { min-width: 0; } .teaching-calendar-scroll:not(.teaching-calendar-modal-scroll) tbody td small { display: block; overflow: hidden; max-width: 54px; color: inherit; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; } }
+@media (max-width: 620px) { .teaching-schedule-toolbar { align-items: flex-start; flex-direction: column; } .teaching-schedule-toolbar > label, .teaching-period-controls { width: 100%; } .teaching-period-controls { align-items: stretch; flex-direction: column; } .teaching-period-controls label { justify-content: space-between; } .teaching-period-controls label .searchable-filter { flex: 1; min-width: 0; } .teaching-current-date { justify-content: center; } .teaching-schedule-actions { width: 100%; flex-wrap: wrap; } .teaching-schedule-actions button, .teaching-upload-button { flex: 1 1 42%; justify-content: center; } .teaching-schedule-page .workspace-title-row { width: 100%; } .teaching-plans-list-head { align-items: flex-start; flex-direction: column; } .teaching-plans-list-tools { width: 100%; justify-content: space-between; } }
+@media print { .teaching-schedule-page .workspace-breadcrumb, .teaching-schedule-actions, .teaching-schedule-toolbar > label, .teaching-period-controls, .teaching-schedule-legend { display: none !important; } .teaching-schedule-page { max-width: none; } .teaching-term-grid { grid-template-columns: repeat(3, 1fr); gap: 5px; } .teaching-term-card { break-inside: avoid; box-shadow: none; } .teaching-calendar-scroll table { min-width: 0; } .teaching-calendar-scroll thead th, .teaching-calendar-scroll tbody td { font-size: 7px; } }
