@@ -15,7 +15,7 @@ export const settingsService = {
     if (error) throw new Error(error.message);
   },
   async backups(): Promise<SystemBackup[]> {
-    const { data, error } = await db().from("system_backups").select("id, reason, snapshot, created_at").order("created_at", { ascending: false }).limit(30);
+    const { data, error } = await db().from("system_backups").select("id, reason, snapshot, created_at").is("deleted_at", null).order("created_at", { ascending: false }).limit(30);
     if (error) throw new Error(error.message);
     return (data ?? []) as SystemBackup[];
   },
