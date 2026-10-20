@@ -1,5 +1,8 @@
 .accounts-page { display: grid; gap: 16px; }
 .accounts-page .workspace-title-row { margin-bottom: 0; }
+.accounts-refresh-button { display: inline-flex; min-height: var(--button-height, 40px); align-items: center; justify-content: center; gap: 8px; padding: 0 12px; border: 1px solid var(--button-secondary-border, #dce3ee); border-radius: var(--button-radius, 8px); background: var(--button-secondary-background, #fff); color: var(--button-secondary-ink, #334155); font: inherit; font-size: 13px; font-weight: 600; line-height: 1.2; cursor: pointer; transition: background .15s ease, border-color .15s ease, color .15s ease; }
+.accounts-refresh-button:hover:not(:disabled) { border-color: #b8c9e8; background: var(--button-secondary-hover, #f4f7ff); color: var(--color-primary, #283898); }
+.accounts-refresh-button:disabled { opacity: .55; cursor: wait; }
 .accounts-settings, .accounts-invite { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 14px 20px; }
 .accounts-settings > div, .accounts-invite > div { grid-column: 1 / -1; }
 .accounts-settings h2, .accounts-invite h2, .accounts-list h2 { display: flex; align-items: center; gap: 8px; margin: 0; color: #172554; font-size: 16px; }
