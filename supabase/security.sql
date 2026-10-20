@@ -11,9 +11,16 @@ create table if not exists public.user_profiles (
   department text,
   phone text,
   office text,
+  avatar_url text,
+  deleted_at timestamptz,
+  purge_at timestamptz,
+  trash_previous_banned_until timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+alter table public.user_profiles add column if not exists deleted_at timestamptz;
+alter table public.user_profiles add column if not exists purge_at timestamptz;
+alter table public.user_profiles add column if not exists trash_previous_banned_until timestamptz;
 
 alter table public.students add column if not exists auth_user_id uuid references auth.users(id) on delete set null;
 alter table public.students add column if not exists academic_status text not null default 'Đang học';
@@ -41,7 +48,7 @@ from auth.users on conflict (user_id) do nothing;
 
 create or replace function public.current_role_key()
 returns text language sql stable security definer set search_path = '' as $$
-  select role_key from public.user_profiles where user_id = (select auth.uid())
+  select role_key from public.user_profiles where user_id = (select auth.uid()) and deleted_at is null
 $$;
 
 create or replace function public.is_system_admin()
@@ -58,7 +65,8 @@ declare
   role_value boolean;
 begin
   if caller is null then return false; end if;
-  select role_key into caller_role from public.user_profiles where user_id = caller;
+  select role_key into caller_role from public.user_profiles where user_id = caller and deleted_at is null;
+  if not found then return false; end if;
   if caller_role = 'super_admin' then return true; end if;
   select allowed into override_value from public.user_module_permissions
     where user_id = caller and module_key = p_module and action_key = p_action;
@@ -91,20 +99,24 @@ select r.role_key, m.module_key, a.action_key,
   case
     when r.role_key in ('system_admin','sub_admin') then true
     when r.role_key = 'teacher' then a.action_key in ('read','create','update','delete','restore','export') and m.module_key not in ('accounts','permissions','settings')
-    when r.role_key = 'assistant' then a.action_key in ('read','create','update') and m.module_key in ('dashboard','students','student-records','semesters','academic-years','grades','assignments','tasks','groups','teaching-plans','calendar','documents','academic-ai','student-support','supports','surveys','forms-templates','notifications','random-picker','my-profile','trash')
+    when r.role_key = 'assistant' then (a.action_key in ('read','create','update') or (a.action_key = 'delete' and m.module_key = 'random-picker')) and m.module_key in ('dashboard','students','student-records','semesters','academic-years','grades','assignments','tasks','groups','teaching-plans','calendar','documents','academic-ai','source-data','student-support','supports','surveys','forms-templates','notifications','random-picker','my-profile','trash')
     when r.role_key in ('class_president','class_vice') then (a.action_key in ('read','create') or (a.action_key = 'update' and m.module_key = 'random-picker')) and m.module_key in ('dashboard','student-records','assignments','tasks','groups','calendar','documents','supports','surveys','notifications','my-profile','random-picker')
     when r.role_key = 'student' then (a.action_key = 'read' or (a.action_key = 'create' and m.module_key = 'groups') or (a.action_key in ('create','update') and m.module_key = 'random-picker')) and m.module_key in ('dashboard','student-records','assignments','documents','academic-ai','supports','surveys','notifications','forms-templates','my-profile','random-picker','groups')
     else false
   end
 from (values ('system_admin'),('sub_admin'),('teacher'),('assistant'),('class_president'),('class_vice'),('student')) as r(role_key)
-cross join (values ('dashboard'),('academic-years'),('semesters'),('timetables'),('students'),('student-records'),('groups'),('teaching-plans'),('calendar'),('grades'),('assignments'),('tasks'),('student-support'),('academic-ai'),('documents'),('forms-templates'),('surveys'),('notifications'),('announcements'),('supports'),('random-picker'),('my-profile'),('accounts'),('permissions'),('audit-logs'),('backup'),('trash'),('settings')) as m(module_key)
+cross join (values ('dashboard'),('academic-years'),('semesters'),('timetables'),('students'),('student-records'),('groups'),('teaching-plans'),('calendar'),('grades'),('assignments'),('tasks'),('student-support'),('academic-ai'),('documents'),('source-data'),('forms-templates'),('surveys'),('notifications'),('announcements'),('supports'),('random-picker'),('my-profile'),('accounts'),('permissions'),('audit-logs'),('backup'),('trash'),('settings')) as m(module_key)
 cross join (values ('read'),('create'),('update'),('delete'),('restore'),('export')) as a(action_key)
 on conflict (role_key, module_key, action_key) do nothing;
+
+insert into public.role_module_permissions (role_key, module_key, action_key, allowed)
+values ('assistant','random-picker','delete',true)
+on conflict (role_key,module_key,action_key) do update set allowed = excluded.allowed, updated_at = now();
 
 alter table public.user_profiles enable row level security;
 drop policy if exists "Users read own profiles and admins read all" on public.user_profiles;
 create policy "Users read own profiles and admins read all" on public.user_profiles for select to authenticated
-  using (user_id = (select auth.uid()) or public.is_system_admin());
+  using (deleted_at is null and (user_id = (select auth.uid()) or public.is_system_admin()));
 drop policy if exists "Users update their own profile fields" on public.user_profiles;
 create policy "Users update their own profile fields" on public.user_profiles for update to authenticated
   using (user_id = (select auth.uid()) or public.is_system_admin())
@@ -237,11 +249,11 @@ begin
   select r.role_key,m.module_key,a.action_key,
     case when r.role_key in ('system_admin','sub_admin') then true
       when r.role_key = 'teacher' then a.action_key in ('read','create','update','delete','restore','export') and m.module_key not in ('accounts','permissions','settings')
-      when r.role_key = 'assistant' then a.action_key in ('read','create','update') and m.module_key not in ('accounts','permissions','settings','audit-logs','backup')
+      when r.role_key = 'assistant' then (a.action_key in ('read','create','update') or (a.action_key = 'delete' and m.module_key = 'random-picker')) and m.module_key not in ('accounts','permissions','settings','audit-logs','backup')
       when r.role_key in ('class_president','class_vice') then (a.action_key in ('read','create') or (a.action_key = 'update' and m.module_key = 'random-picker')) and m.module_key in ('dashboard','student-records','assignments','tasks','groups','calendar','documents','supports','surveys','notifications','my-profile','random-picker')
       when r.role_key = 'student' then (a.action_key = 'read' or (a.action_key = 'create' and m.module_key = 'groups') or (a.action_key in ('create','update') and m.module_key = 'random-picker')) and m.module_key in ('dashboard','student-records','assignments','documents','academic-ai','supports','surveys','notifications','forms-templates','my-profile','random-picker','groups') else false end
   from (values ('system_admin'),('sub_admin'),('teacher'),('assistant'),('class_president'),('class_vice'),('student')) as r(role_key)
-  cross join (values ('dashboard'),('academic-years'),('semesters'),('timetables'),('students'),('student-records'),('groups'),('teaching-plans'),('calendar'),('grades'),('assignments'),('tasks'),('student-support'),('academic-ai'),('documents'),('forms-templates'),('surveys'),('notifications'),('announcements'),('supports'),('random-picker'),('my-profile'),('accounts'),('permissions'),('audit-logs'),('backup'),('trash'),('settings')) as m(module_key)
+  cross join (values ('dashboard'),('academic-years'),('semesters'),('timetables'),('students'),('student-records'),('groups'),('teaching-plans'),('calendar'),('grades'),('assignments'),('tasks'),('student-support'),('academic-ai'),('documents'),('source-data'),('forms-templates'),('surveys'),('notifications'),('announcements'),('supports'),('random-picker'),('my-profile'),('accounts'),('permissions'),('audit-logs'),('backup'),('trash'),('settings')) as m(module_key)
   cross join (values ('read'),('create'),('update'),('delete'),('restore'),('export')) as a(action_key);
   delete from public.user_module_permissions;
 end;
