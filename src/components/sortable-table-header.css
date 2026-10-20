@@ -1,0 +1,3 @@
+.table-sort-header { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: inherit; letter-spacing: inherit; text-align: left; white-space: nowrap; cursor: pointer; }
+.table-sort-header:hover, .table-sort-header:focus-visible { color: #283898; }
+.table-sort-header span { color: #283898; font-size: 12px; }
