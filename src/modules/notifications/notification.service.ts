@@ -5,8 +5,13 @@ export type AppNotification = { id: string; title: string; body: string; severit
 function db() { if (!isSupabaseConfigured || !supabase) throw new Error("Chưa cấu hình Supabase."); return supabase; }
 
 export const notificationService = {
+  async classes(): Promise<string[]> {
+    const { data, error } = await db().rpc("list_app_notification_classes");
+    if (error) throw new Error(error.code === "42883" || error.code === "PGRST202" ? "Cần chạy bản cập nhật supabase/notifications.sql để tải lớp phụ trách." : error.message);
+    return (data ?? []).map((row: { class_name: string }) => row.class_name).filter(Boolean);
+  },
   async inbox() {
-    const { data, error } = await db().from("app_notification_recipients").select("notification_id, read_at, app_notifications(id,title,body,severity,scope,class_name,created_at)").order("notification_id", { ascending: false }).limit(100);
+    const { data, error } = await db().from("app_notification_recipients").select("notification_id, read_at, app_notifications(id,title,body,severity,scope,class_name,created_at)").is("app_notifications.deleted_at", null).order("notification_id", { ascending: false }).limit(100);
     if (error) throw new Error(error.code === "42P01" || error.code === "PGRST205" ? "Chưa tạo hệ thống thông báo. Hãy chạy supabase/notifications.sql." : error.message);
     return (data ?? []).flatMap((row) => {
       const notice = row.app_notifications as unknown as Omit<AppNotification, "read_at"> | null;
