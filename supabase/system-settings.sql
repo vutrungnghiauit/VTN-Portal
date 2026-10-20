@@ -30,14 +30,18 @@ create table if not exists public.system_backups (
   created_by uuid not null references auth.users(id) on delete cascade,
   reason text not null,
   snapshot jsonb not null,
+  deleted_at timestamptz,
+  purge_at timestamptz,
   created_at timestamptz not null default now()
 );
+alter table public.system_backups add column if not exists deleted_at timestamptz;
+alter table public.system_backups add column if not exists purge_at timestamptz;
 alter table public.system_settings enable row level security;
 alter table public.system_backups enable row level security;
 drop policy if exists "Authenticated users read system settings" on public.system_settings;
 create policy "Authenticated users read system settings" on public.system_settings for select to authenticated using (true);
 drop policy if exists "Admins read system backups" on public.system_backups;
-create policy "Admins read system backups" on public.system_backups for select to authenticated using (public.is_system_admin());
+create policy "Admins read system backups" on public.system_backups for select to authenticated using (deleted_at is null and public.is_system_admin());
 grant select on public.system_settings, public.system_backups to authenticated;
 revoke insert, update, delete on public.system_settings, public.system_backups from anon, authenticated;
 
