@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { BellRing, ChevronDown, LogOut, Menu, Minus, Monitor, Plus, Smartphone, Tablet, Type, UserRound, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import NotificationBell from "../modules/notifications/NotificationBell";
@@ -7,6 +7,7 @@ import { workspaceService, type WorkspaceRecord } from "../modules/workspace/wor
 import { buildSemesterDateCatalog, getTeachingEventsOnDate } from "../modules/workspace/TeachingWeekCalendar";
 import { buildTimetableRows, toTimetableWeekRecords } from "../modules/timetable/timetable-week-data";
 import { solarToVietnameseLunar, vietnameseLunarYearName } from "../lib/vietnamese-lunar-date";
+import { settingsService, type SystemSettings } from "../modules/settings/settings.service";
 
 const roleLabels: Record<string, string> = { super_admin: "Super Admin", system_admin: "System Admin", sub_admin: "Sub Admin", teacher: "Giảng viên", assistant: "Trợ giảng", class_president: "Lớp trưởng", class_vice: "Lớp phó", student: "Sinh viên" };
 const greetings = [
@@ -24,6 +25,36 @@ const dateFromKey = (key: string) => {
 const weekdays = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
 const dayLabel = (date: Date) => weekdays[date.getDay()];
 const shiftLabels = ["Sáng", "Chiều", "Tối"];
+type ScrollDirection = "left" | "right" | "up" | "down";
+function AutoScrollText({ children, direction, duration, className = "" }: { children: ReactNode; direction: ScrollDirection; duration: number; className?: string }) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLSpanElement>(null);
+  const [overflow, setOverflow] = useState(false);
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const content = contentRef.current;
+    if (!viewport || !content) return;
+    const measure = () => {
+      const horizontal = direction === "left" || direction === "right";
+      const contentSize = horizontal ? content.scrollWidth : content.scrollHeight;
+      const viewportSize = horizontal ? viewport.clientWidth : viewport.clientHeight;
+      const overflowing = contentSize > viewportSize + 1;
+      const startsAtEnd = direction === "left" || direction === "up";
+      viewport.style.setProperty("--briefing-scroll-start", `${startsAtEnd ? viewportSize : -contentSize}px`);
+      viewport.style.setProperty("--briefing-scroll-end", `${startsAtEnd ? -contentSize : viewportSize}px`);
+      setOverflow(overflowing);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(viewport);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [children, direction]);
+  const style = { "--briefing-scroll-duration": `${duration}s` } as CSSProperties;
+  return <div ref={viewportRef} className={`app-briefing-scroll direction-${direction} ${direction === "up" || direction === "down" ? "is-vertical" : ""} ${overflow ? "is-overflowing" : ""} ${className}`} style={style}>
+    <div className="app-briefing-scroll-track" aria-live="off"><span ref={contentRef} className="app-briefing-scroll-content">{children}</span></div>
+  </div>;
+}
 type ViewMode = "web" | "tablet" | "mobile";
 const FONT_SCALE_SETTINGS_VERSION = "2";
 const viewModes: Array<{ key: ViewMode; label: string; Icon: typeof Monitor }> = [
@@ -58,6 +89,12 @@ export default function Header({ email, role, canViewTimetable, onMenu, onSignOu
   const [timetableRows, setTimetableRows] = useState<WorkspaceRecord[]>([]);
   const [semesterRows, setSemesterRows] = useState<WorkspaceRecord[]>([]);
   const [progressRows, setProgressRows] = useState<WorkspaceRecord[]>([]);
+  const [datetimeScrollDuration, setDatetimeScrollDuration] = useState(20);
+  const [datetimeScrollDirection, setDatetimeScrollDirection] = useState<ScrollDirection>("left");
+  const [greetingScrollDuration, setGreetingScrollDuration] = useState(20);
+  const [greetingScrollDirection, setGreetingScrollDirection] = useState<ScrollDirection>("left");
+  const [agendaScrollDuration, setAgendaScrollDuration] = useState(20);
+  const [agendaScrollDirection, setAgendaScrollDirection] = useState<ScrollDirection>("left");
   const [scheduleLoading, setScheduleLoading] = useState(canViewTimetable);
   const [greeting] = useState(() => greetings[Math.floor(Math.random() * greetings.length)]);
   const SelectedViewIcon = viewModes.find((mode) => mode.key === viewMode)?.Icon ?? Monitor;
@@ -74,6 +111,36 @@ export default function Header({ email, role, canViewTimetable, onMenu, onSignOu
   const todayLessons = useMemo(() => getTeachingEventsOnDate(timetableRows, todayDate, semesterDateCatalog).filter((event) => event.type !== "cancelled"), [timetableRows, todayDate, semesterDateCatalog]);
   const timeLabel = new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(now);
   const dateLabel = `Ngày ${todayDay} Tháng ${todayMonth} Năm ${todayYear}`;
+
+  const todayAgendaText = !canViewTimetable ? "Chưa được cấp quyền xem thời khóa biểu." : scheduleLoading ? "Đang tải lịch dạy…" : todayLessons.length ? todayLessons.map((event) => {
+    const data = event.record.data;
+    const title = String(data.title ?? data.subjectName ?? data.courseName ?? "Môn học");
+    const room = String(data.room ?? "").trim() || "Chưa cập nhật";
+    const periodText = event.startPeriod ? `Tiết ${event.startPeriod}${event.endPeriod && event.endPeriod !== event.startPeriod ? `-${event.endPeriod}` : ""}` : "Chưa cập nhật tiết";
+    return `${shiftLabels[event.shift]}: ${title} · ${periodText} · Phòng ${room}`;
+  }).join("　　") : "Không có lịch dạy hôm nay.";
+
+  useEffect(() => {
+    let active = true;
+    const apply = (settings: SystemSettings) => {
+      const datetimeDuration = Number(settings.datetime_scroll_duration ?? settings.briefing_scroll_duration ?? 20);
+      setDatetimeScrollDuration(Number.isFinite(datetimeDuration) ? Math.min(120, Math.max(3, datetimeDuration)) : 20);
+      const datetimeDirection = String(settings.datetime_scroll_direction ?? settings.briefing_scroll_direction ?? "left");
+      setDatetimeScrollDirection(["left", "right", "up", "down"].includes(datetimeDirection) ? datetimeDirection as ScrollDirection : "left");
+      const greetingDuration = Number(settings.greeting_scroll_duration ?? settings.briefing_scroll_duration ?? 20);
+      setGreetingScrollDuration(Number.isFinite(greetingDuration) ? Math.min(120, Math.max(3, greetingDuration)) : 20);
+      const greetingDirection = String(settings.greeting_scroll_direction ?? settings.briefing_scroll_direction ?? "left");
+      setGreetingScrollDirection(["left", "right", "up", "down"].includes(greetingDirection) ? greetingDirection as ScrollDirection : "left");
+      const agendaDuration = Number(settings.agenda_scroll_duration ?? 20);
+      setAgendaScrollDuration(Number.isFinite(agendaDuration) ? Math.min(120, Math.max(3, agendaDuration)) : 20);
+      const agendaDirection = String(settings.agenda_scroll_direction ?? "left");
+      setAgendaScrollDirection(["left", "right", "up", "down"].includes(agendaDirection) ? agendaDirection as ScrollDirection : "left");
+    };
+    const onSettingsUpdated = (event: Event) => apply((event as CustomEvent<SystemSettings>).detail ?? {});
+    window.addEventListener("vtn-system-settings-updated", onSettingsUpdated);
+    void settingsService.get().then((settings) => { if (active) apply(settings); }).catch(() => undefined);
+    return () => { active = false; window.removeEventListener("vtn-system-settings-updated", onSettingsUpdated); };
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.viewMode = viewMode;
@@ -157,17 +224,11 @@ export default function Header({ email, role, canViewTimetable, onMenu, onSignOu
         <button className="app-menu-button" onClick={onMenu} aria-label="Mở điều hướng"><Menu size={20} /></button>
         <section className="app-header-briefing" aria-label="Daily overview">
           <div className="app-header-briefing-meta">
-            <div className="app-header-briefing-row"><strong>{timeLabel}, {dayLabel(todayDate)}, {dateLabel}</strong> ({lunarDate.day}/{lunarDate.month}{lunarDate.isLeapMonth ? " nhuận" : ""} Năm {lunarYearName})</div>
-            <div className="app-header-briefing-row app-header-greeting">{greeting}</div>
+            <AutoScrollText className="app-header-briefing-row app-header-datetime" direction={datetimeScrollDirection} duration={datetimeScrollDuration}><strong>{timeLabel}, {dayLabel(todayDate)}, {dateLabel} ({lunarDate.day}/{lunarDate.month}{lunarDate.isLeapMonth ? " nhuận" : ""} Năm {lunarYearName})</strong></AutoScrollText>
+            <AutoScrollText className="app-header-briefing-row app-header-greeting" direction={greetingScrollDirection} duration={greetingScrollDuration}>{greeting}</AutoScrollText>
           </div>
           <div className="app-header-briefing-agenda">
-            <div className="app-header-briefing-row app-header-agenda"><strong>Công việc hôm nay:</strong><div className="app-header-agenda-items">{!canViewTimetable ? <span>Chưa được cấp quyền xem thời khóa biểu.</span> : scheduleLoading ? <span>Đang tải lịch dạy…</span> : todayLessons.length ? todayLessons.map((event) => {
-          const data = event.record.data;
-          const title = String(data.title ?? data.subjectName ?? data.courseName ?? "Môn học");
-          const room = String(data.room ?? "").trim() || "Chưa cập nhật";
-          const periodText = event.startPeriod ? `Tiết ${event.startPeriod}${event.endPeriod && event.endPeriod !== event.startPeriod ? `-${event.endPeriod}` : ""}` : "Chưa cập nhật tiết";
-          return <p className="app-header-agenda-item" key={event.id}><span>{shiftLabels[event.shift]}:</span> {title}<i>•</i> {periodText}<i>•</i> Phòng {room}</p>;
-        }) : <span>Không có lịch dạy hôm nay.</span>}</div></div>
+            <AutoScrollText className="app-header-briefing-row app-header-agenda" direction={agendaScrollDirection} duration={agendaScrollDuration}><strong>Công việc hôm nay:</strong> {todayAgendaText}</AutoScrollText>
           </div>
         </section>
         <div className="app-view-controls" ref={viewControlsRef}>
