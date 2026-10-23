@@ -99,13 +99,13 @@ select r.role_key, m.module_key, a.action_key,
   case
     when r.role_key in ('system_admin','sub_admin') then true
     when r.role_key = 'teacher' then a.action_key in ('read','create','update','delete','restore','export') and m.module_key not in ('accounts','permissions','settings')
-    when r.role_key = 'assistant' then (a.action_key in ('read','create','update') or (a.action_key = 'delete' and m.module_key = 'random-picker')) and m.module_key in ('dashboard','students','student-records','semesters','academic-years','grades','assignments','tasks','groups','teaching-plans','calendar','documents','academic-ai','source-data','student-support','supports','surveys','forms-templates','notifications','random-picker','my-profile','trash')
+    when r.role_key = 'assistant' then (a.action_key in ('read','create','update') or (a.action_key = 'delete' and m.module_key = 'random-picker')) and m.module_key in ('dashboard','students','student-records','academic-advisors','semesters','academic-years','grades','assignments','tasks','groups','teaching-plans','calendar','documents','academic-ai','source-data','student-support','supports','surveys','forms-templates','notifications','random-picker','my-profile','trash')
     when r.role_key in ('class_president','class_vice') then (a.action_key in ('read','create') or (a.action_key = 'update' and m.module_key = 'random-picker')) and m.module_key in ('dashboard','student-records','assignments','tasks','groups','calendar','documents','supports','surveys','notifications','my-profile','random-picker')
     when r.role_key = 'student' then (a.action_key = 'read' or (a.action_key = 'create' and m.module_key = 'groups') or (a.action_key in ('create','update') and m.module_key = 'random-picker')) and m.module_key in ('dashboard','student-records','assignments','documents','academic-ai','supports','surveys','notifications','forms-templates','my-profile','random-picker','groups')
     else false
   end
 from (values ('system_admin'),('sub_admin'),('teacher'),('assistant'),('class_president'),('class_vice'),('student')) as r(role_key)
-cross join (values ('dashboard'),('academic-years'),('semesters'),('timetables'),('students'),('student-records'),('groups'),('teaching-plans'),('calendar'),('grades'),('assignments'),('tasks'),('student-support'),('academic-ai'),('documents'),('source-data'),('forms-templates'),('surveys'),('notifications'),('announcements'),('supports'),('random-picker'),('my-profile'),('accounts'),('permissions'),('audit-logs'),('backup'),('trash'),('settings')) as m(module_key)
+cross join (values ('dashboard'),('academic-years'),('semesters'),('timetables'),('students'),('student-records'),('academic-advisors'),('groups'),('teaching-plans'),('calendar'),('grades'),('assignments'),('tasks'),('student-support'),('academic-ai'),('documents'),('source-data'),('forms-templates'),('surveys'),('notifications'),('announcements'),('supports'),('random-picker'),('my-profile'),('accounts'),('permissions'),('audit-logs'),('backup'),('trash'),('settings')) as m(module_key)
 cross join (values ('read'),('create'),('update'),('delete'),('restore'),('export')) as a(action_key)
 on conflict (role_key, module_key, action_key) do nothing;
 
@@ -158,6 +158,41 @@ begin
 end;
 $$;
 grant execute on function public.set_user_role(uuid, text) to authenticated;
+
+create or replace function public.set_student_office_role(p_student_record_id uuid, p_role text)
+returns boolean language plpgsql security definer set search_path = '' as $$
+declare
+  caller uuid := (select auth.uid());
+  caller_role text := public.current_role_key();
+  student_owner uuid;
+  linked_user uuid;
+  target_role text;
+begin
+  if caller is null or caller_role not in ('super_admin','system_admin','sub_admin','teacher')
+     or not public.can_access_module('academic-advisors','update') then
+    raise exception 'Academic advisor position update permission required';
+  end if;
+  if p_role not in ('student','class_president','class_vice') then
+    raise exception 'Invalid student office role';
+  end if;
+  select s.owner_id, s.auth_user_id into student_owner, linked_user
+    from public.students s where s.id=p_student_record_id and s.deleted_at is null;
+  if student_owner is null then return false; end if;
+  if caller_role='teacher' and student_owner <> caller then
+    raise exception 'Teachers may only update students in their own roster';
+  end if;
+  if linked_user is null then return false; end if;
+  select p.role_key into target_role from public.user_profiles p where p.user_id=linked_user for update;
+  if target_role is null then return false; end if;
+  if target_role not in ('student','class_president','class_vice') then
+    raise exception 'Only student accounts can be assigned a class office';
+  end if;
+  update public.user_profiles set role_key=p_role, updated_at=now() where user_id=linked_user;
+  return true;
+end;
+$$;
+revoke all on function public.set_student_office_role(uuid,text) from public, anon;
+grant execute on function public.set_student_office_role(uuid,text) to authenticated;
 
 create or replace function public.set_role_module_permission(p_role text, p_module text, p_action text, p_allowed boolean)
 returns void language plpgsql security definer set search_path = '' as $$
@@ -253,7 +288,7 @@ begin
       when r.role_key in ('class_president','class_vice') then (a.action_key in ('read','create') or (a.action_key = 'update' and m.module_key = 'random-picker')) and m.module_key in ('dashboard','student-records','assignments','tasks','groups','calendar','documents','supports','surveys','notifications','my-profile','random-picker')
       when r.role_key = 'student' then (a.action_key = 'read' or (a.action_key = 'create' and m.module_key = 'groups') or (a.action_key in ('create','update') and m.module_key = 'random-picker')) and m.module_key in ('dashboard','student-records','assignments','documents','academic-ai','supports','surveys','notifications','forms-templates','my-profile','random-picker','groups') else false end
   from (values ('system_admin'),('sub_admin'),('teacher'),('assistant'),('class_president'),('class_vice'),('student')) as r(role_key)
-  cross join (values ('dashboard'),('academic-years'),('semesters'),('timetables'),('students'),('student-records'),('groups'),('teaching-plans'),('calendar'),('grades'),('assignments'),('tasks'),('student-support'),('academic-ai'),('documents'),('source-data'),('forms-templates'),('surveys'),('notifications'),('announcements'),('supports'),('random-picker'),('my-profile'),('accounts'),('permissions'),('audit-logs'),('backup'),('trash'),('settings')) as m(module_key)
+  cross join (values ('dashboard'),('academic-years'),('semesters'),('timetables'),('students'),('student-records'),('academic-advisors'),('groups'),('teaching-plans'),('calendar'),('grades'),('assignments'),('tasks'),('student-support'),('academic-ai'),('documents'),('source-data'),('forms-templates'),('surveys'),('notifications'),('announcements'),('supports'),('random-picker'),('my-profile'),('accounts'),('permissions'),('audit-logs'),('backup'),('trash'),('settings')) as m(module_key)
   cross join (values ('read'),('create'),('update'),('delete'),('restore'),('export')) as a(action_key);
   delete from public.user_module_permissions;
 end;
