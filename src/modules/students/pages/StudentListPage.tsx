@@ -178,11 +178,14 @@ export default function StudentListPage({ canResetPasswords = false, canImport =
   const [resetResult, setResetResult] = useState("");
   const [resetBusy, setResetBusy] = useState(false);
   const [semesterFilter, setSemesterFilter] = useState(() => { const saved = localStorage.getItem("vtn-active-semester") || "all"; return saved === "all" ? saved : normalizeSemesterName(saved); });
+  const [genderFilter, setGenderFilter] = useState("all");
   const [academicStatusFilter, setAcademicStatusFilter] = useState("all");
   const [registrationStatusFilter, setRegistrationStatusFilter] = useState("all");
   const [academicYearFilter, setAcademicYearFilter] = useState("all");
   const [classFilter, setClassFilter] = useState("all");
   const [majorFilter, setMajorFilter] = useState("all");
+  const [courseNameFilter, setCourseNameFilter] = useState("all");
+  const [courseClassNameFilter, setCourseClassNameFilter] = useState("all");
   const rosterInputRef = useRef<HTMLInputElement>(null);
   const [rosterImportBusy, setRosterImportBusy] = useState(false);
   const [sourceDataImportBusy, setSourceDataImportBusy] = useState(false);
@@ -488,10 +491,13 @@ export default function StudentListPage({ canResetPasswords = false, canImport =
     return {
       semesters: [...new Map(distinct((student) => rosterField(student, "", "sourceTerm", "Đợt", "semester") || student.semesterName).map(normalizeSemesterName).filter(Boolean).map((name) => [semesterIdentity(name), name])).values()],
       academicStatuses: distinct((student) => student.academicStatus),
+      genders: distinct((student) => rosterField(student, "gender", "gender", "gioi tinh")),
       registrationStatuses: distinct((student) => rosterField(student, "registrationStatus", "trang thai dang ky lhp")),
       academicYears: distinct((student) => rosterField(student, "", "sourceAcademicYear", "Năm học", "academicYear")),
-      classes: distinct((student) => rosterField(student, "", "courseClassName") || rosterField(student, "", "sourceClass", "Lớp học") || student.className),
       majors: distinct((student) => rosterField(student, "academicMajor", "sourceFaculty", "Ngành") || student.faculty),
+      courseNames: distinct((student) => rosterField(student, "", "courseName", "subjectName", "Tên học phần", "Tên môn học")),
+      courseClassNames: distinct((student) => rosterField(student, "", "courseClassName", "Tên LHP")),
+      classes: distinct((student) => rosterField(student, "className", "homeroomClass", "Mã lớp chủ", "Lớp sinh hoạt", "className") || student.className),
     };
   }, [students]);
   const studentAcademicPeriods = useMemo(() => students.map((student) => ({
@@ -512,18 +518,24 @@ export default function StudentListPage({ canResetPasswords = false, canImport =
       ].join(" "));
       const term = rosterField(student, "", "sourceTerm", "Đợt", "semester") || student.semesterName;
       const year = rosterField(student, "", "sourceAcademicYear", "Năm học", "academicYear");
-      const className = rosterField(student, "", "courseClassName") || rosterField(student, "", "sourceClass", "Lớp học") || student.className;
+      const className = rosterField(student, "className", "homeroomClass", "Mã lớp chủ", "Lớp sinh hoạt", "className") || student.className;
       const major = rosterField(student, "academicMajor", "sourceFaculty", "Ngành") || student.faculty;
+      const gender = rosterField(student, "gender", "gender", "gioi tinh");
       const registrationStatus = rosterField(student, "registrationStatus", "trang thai dang ky lhp");
+      const courseName = rosterField(student, "", "courseName", "subjectName", "Tên học phần", "Tên môn học");
+      const courseClassName = rosterField(student, "", "courseClassName", "Tên LHP");
       return (!keyword || searchable.includes(keyword))
         && (semesterFilter === "all" || semesterMatchesSelection(term, year, semesterFilter))
         && (academicStatusFilter === "all" || student.academicStatus === academicStatusFilter)
+        && (genderFilter === "all" || gender === genderFilter)
         && (registrationStatusFilter === "all" || registrationStatus === registrationStatusFilter)
         && (academicYearFilter === "all" || academicPeriodMatchesYear(term, year, academicYearFilter, studentAcademicPeriods))
         && (classFilter === "all" || className === classFilter)
-        && (majorFilter === "all" || major === majorFilter);
+        && (majorFilter === "all" || major === majorFilter)
+        && (courseNameFilter === "all" || courseName === courseNameFilter)
+        && (courseClassNameFilter === "all" || courseClassName === courseClassNameFilter);
     });
-  }, [students, search, semesterFilter, academicStatusFilter, registrationStatusFilter, academicYearFilter, classFilter, majorFilter, studentAcademicPeriods]);
+  }, [students, search, semesterFilter, genderFilter, academicStatusFilter, registrationStatusFilter, academicYearFilter, classFilter, majorFilter, courseNameFilter, courseClassNameFilter, studentAcademicPeriods]);
 
   const sortedStudents = useMemo(() => {
     const originalOrder = new Map(students.map((student, index) => [student.id, index]));
@@ -550,11 +562,11 @@ export default function StudentListPage({ canResetPasswords = false, canImport =
   const allVisibleSelected = filteredStudents.length > 0 && filteredStudents.every((student) => selectedStudentIds.has(student.id));
   const someVisibleSelected = filteredStudents.some((student) => selectedStudentIds.has(student.id));
   useEffect(() => { setCurrentPage((page) => Math.min(page, pageCount)); }, [pageCount]);
-  useEffect(() => { setCurrentPage(1); }, [search, semesterFilter, academicStatusFilter, registrationStatusFilter, academicYearFilter, classFilter, majorFilter]);
-  useEffect(() => { setSelectedStudentIds(new Set()); }, [search, semesterFilter, academicStatusFilter, registrationStatusFilter, academicYearFilter, classFilter, majorFilter]);
+  useEffect(() => { setCurrentPage(1); }, [search, semesterFilter, genderFilter, academicStatusFilter, registrationStatusFilter, academicYearFilter, classFilter, majorFilter, courseNameFilter, courseClassNameFilter]);
+  useEffect(() => { setSelectedStudentIds(new Set()); }, [search, semesterFilter, genderFilter, academicStatusFilter, registrationStatusFilter, academicYearFilter, classFilter, majorFilter, courseNameFilter, courseClassNameFilter]);
 
   function clearStudentFilters() {
-    setSearch(""); setSemesterFilter("all"); setAcademicStatusFilter("all"); setRegistrationStatusFilter("all"); setAcademicYearFilter("all"); setClassFilter("all"); setMajorFilter("all");
+    setSearch(""); setSemesterFilter("all"); setGenderFilter("all"); setAcademicStatusFilter("all"); setRegistrationStatusFilter("all"); setAcademicYearFilter("all"); setClassFilter("all"); setMajorFilter("all"); setCourseNameFilter("all"); setCourseClassNameFilter("all");
     localStorage.setItem("vtn-active-semester", "all");
     window.dispatchEvent(new CustomEvent("vtn-semester-filter-changed", { detail: "all" }));
   }
@@ -611,13 +623,16 @@ export default function StudentListPage({ canResetPasswords = false, canImport =
         
         
         <div className="students-filterbar" aria-label="Bộ lọc sinh viên">
-          <QuickFilterHeading onClear={clearStudentFilters} clearDisabled={!search && semesterFilter === "all" && academicStatusFilter === "all" && registrationStatusFilter === "all" && academicYearFilter === "all" && classFilter === "all" && majorFilter === "all"} />
+          <QuickFilterHeading onClear={clearStudentFilters} clearDisabled={!search && semesterFilter === "all" && genderFilter === "all" && academicStatusFilter === "all" && registrationStatusFilter === "all" && academicYearFilter === "all" && classFilter === "all" && majorFilter === "all" && courseNameFilter === "all" && courseClassNameFilter === "all"} />
           <label>Năm học<SearchableFilter value={academicYearFilter} allValue="all" allLabel="Tất cả năm học" options={academicYearOptions.map((item) => ({ value: item, label: item }))} onChange={chooseAcademicYear} /></label>
           <label>Học kỳ<SearchableFilter value={semesterFilter} allValue="all" allLabel="Tất cả học kỳ" options={[...(semesterFilter !== "all" && !visibleSemesterGroups.some((group) => group.semesters.includes(semesterFilter)) ? [{ value: semesterFilter, label: semesterFilter }] : []), ...visibleSemesterGroups.flatMap((group) => group.semesters.map((item) => ({ value: item, label: item })))]} onChange={(rawValue) => { const value = rawValue === "all" ? rawValue : normalizeSemesterName(rawValue); setSemesterFilter(value); localStorage.setItem("vtn-active-semester", value); window.dispatchEvent(new CustomEvent("vtn-semester-filter-changed", { detail: value })); }} /></label>
-          <label>Trạng thái SV<SearchableFilter value={academicStatusFilter} allValue="all" allLabel="Tất cả trạng thái" options={filterOptions.academicStatuses.map((item) => ({ value: item, label: item }))} onChange={setAcademicStatusFilter} /></label>
-          <label>Trạng thái đăng ký<SearchableFilter value={registrationStatusFilter} allValue="all" allLabel="Tất cả đăng ký" options={filterOptions.registrationStatuses.map((item) => ({ value: item, label: item }))} onChange={setRegistrationStatusFilter} /></label>
-          <label>Lớp học<SearchableFilter value={classFilter} allValue="all" allLabel="Tất cả lớp" options={filterOptions.classes.map((item) => ({ value: item, label: item }))} onChange={setClassFilter} /></label>
           <label>Ngành<SearchableFilter value={majorFilter} allValue="all" allLabel="Tất cả ngành" options={filterOptions.majors.map((item) => ({ value: item, label: item }))} onChange={setMajorFilter} /></label>
+          <label>Tên học phần<SearchableFilter value={courseNameFilter} allValue="all" allLabel="Tất cả học phần" options={filterOptions.courseNames.map((item) => ({ value: item, label: item }))} onChange={setCourseNameFilter} /></label>
+          <label>Tên LHP<SearchableFilter value={courseClassNameFilter} allValue="all" allLabel="Tất cả LHP" options={filterOptions.courseClassNames.map((item) => ({ value: item, label: item }))} onChange={setCourseClassNameFilter} /></label>
+          <label>Lớp sinh hoạt<SearchableFilter value={classFilter} allValue="all" allLabel="Tất cả lớp sinh hoạt" options={filterOptions.classes.map((item) => ({ value: item, label: item }))} onChange={setClassFilter} /></label>
+          <label>Giới tính<SearchableFilter value={genderFilter} allValue="all" allLabel="Tất cả giới tính" options={filterOptions.genders.map((item) => ({ value: item, label: item }))} onChange={setGenderFilter} /></label>
+          <label>Trạng thái SV<SearchableFilter value={academicStatusFilter} allValue="all" allLabel="Tất cả trạng thái" options={filterOptions.academicStatuses.map((item) => ({ value: item, label: item }))} onChange={setAcademicStatusFilter} /></label>
+          <label>Trạng thái đăng ký LHP<SearchableFilter value={registrationStatusFilter} allValue="all" allLabel="Tất cả đăng ký" options={filterOptions.registrationStatuses.map((item) => ({ value: item, label: item }))} onChange={setRegistrationStatusFilter} /></label>
           
         </div>
         {canImport && <section className="spreadsheet-transfer workspace-panel"><div><strong>Nhập danh sách lớp học phần</strong><p>Chọn nhiều tệp .xls cùng lúc. Hệ thống gộp theo MSSV, lưu lịch sử đăng ký môn học và bỏ qua các tệp tổng hợp học kỳ.</p></div><div className="spreadsheet-transfer-actions"><button type="button" disabled={rosterImportBusy || !isSupabaseConfigured} onClick={() => rosterInputRef.current?.click()}><FileUp size={15} />{rosterImportBusy ? "Đang nhập danh sách…" : "Nhập nhiều tệp .xls"}</button><input ref={rosterInputRef} hidden multiple type="file" accept=".xls,.xlsx" onChange={(event) => void importClassRosters(event.target.files)} /></div></section>}
