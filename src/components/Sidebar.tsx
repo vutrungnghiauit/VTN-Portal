@@ -8,6 +8,7 @@ const iconByKey: Record<string, LucideIcon> = {
   semesters: CalendarDays,
   timetables: CalendarClock,
   "student-records": ContactRound,
+  "academic-advisors": UserRoundCog,
   groups: UsersRound,
   "teaching-plans": BookOpenCheck,
   calendar: CalendarCheck2,
@@ -42,7 +43,7 @@ const groups = [
 const moduleOrderByGroup: Record<string, string[]> = {
   Chung: ["dashboard", "my-profile"],
   "Đào tạo": ["teaching-plans", "academic-years", "semesters", "timetables", "calendar", "tasks"],
-  "Học vụ": ["student-records", "grades", "assignments", "groups", "academic-ai", "random-picker", "survey-participation", "surveys"],
+  "Học vụ": ["student-records", "academic-advisors", "grades", "assignments", "groups", "academic-ai", "random-picker", "survey-participation", "surveys"],
   "Hỗ trợ": ["student-support", "supports", "forms-templates", "documents"],
   "Mục khác": [],
   "Quản trị": ["notifications", "announcements", "settings", "source-data", "accounts", "permissions", "audit-logs", "backup", "trash"],
