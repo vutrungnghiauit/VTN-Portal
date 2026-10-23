@@ -12,7 +12,7 @@ insert into public.system_settings (id,data) values (true, jsonb_build_object(
   'current_semester','',
   'school_address','331 Đỗ Mười, Phường An Phú Đông, Thành phố Hồ Chí Minh',
   'school_email','qtkd@ntt.edu.vn',
-  'school_hotline','',
+  'school_hotline','1900 2039',
   'education_philosophy','Thực học - Thực hành - Thực danh - Thực nghiệp',
   'lecturer_code','NTT-03315',
   'lecturer_name','Vũ Trung Nghĩa',
@@ -22,7 +22,15 @@ insert into public.system_settings (id,data) values (true, jsonb_build_object(
   'lecturer_email','vtnghia@ntt.edu.vn',
   'lecturer_phone','1900 2039',
   'lecturer_office','331 Đỗ Mười, Phường An Phú Đông, Thành phố Hồ Chí Minh',
-  'trash_retention_days',30
+  'trash_retention_days',30,
+  'briefing_scroll_duration',20,
+  'briefing_scroll_direction','left',
+  'datetime_scroll_duration',20,
+  'datetime_scroll_direction','left',
+  'greeting_scroll_duration',20,
+  'greeting_scroll_direction','left',
+  'agenda_scroll_duration',20,
+  'agenda_scroll_direction','left'
 )) on conflict (id) do nothing;
 
 create table if not exists public.system_backups (
