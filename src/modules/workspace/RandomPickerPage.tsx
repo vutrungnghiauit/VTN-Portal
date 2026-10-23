@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { BriefcaseBusiness, ChevronLeft, ChevronRight, CircleHelp, Copy, Download, Eye, Handshake, History, Lightbulb, MessageCircleQuestion, Scale, Search, Shuffle, Sparkles, Timer, Trash2, UsersRound, Volume2 } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ArrowDownAZ, BriefcaseBusiness, ChevronLeft, ChevronRight, CircleHelp, Copy, Download, Expand, Eye, Handshake, History, Lightbulb, MessageCircleQuestion, Minimize, RotateCcw, Scale, Search, Shuffle, Sparkles, Timer, Trash2, UsersRound, Volume2 } from "lucide-react";
 import { studentService } from "../students/student.service";
 import type { Student } from "../students/student.types";
 import { formatDateTime } from "../../lib/date-format";
@@ -115,13 +116,17 @@ const trueFalseDeck: Array<{ title: string; body: string; answer: string }> = [
   { title: "Thông tin cá nhân đã xuất hiện công khai thì doanh nghiệp có thể tùy ý sử dụng.", body: "Cả lớp bình chọn Đúng hoặc Sai, sau đó giải thích lựa chọn.", answer: "Sai. Việc sử dụng vẫn cần có mục đích và căn cứ phù hợp, đồng thời phải tôn trọng quyền riêng tư." },
 ];
 const discussionRoles = ["Điều phối viên", "Người phân tích", "Người phản biện", "Thư ký", "Báo cáo viên", "Quản lý thời gian"];
-const colors = ["#283898", "#2058A8", "#009FC0", "#20B6A4", "#70C058", "#F06028", "#8B5CF6", "#F472B6"];
+const wheelColors = ["#d71935", "#3473df", "#079c3b", "#f2bd12"];
 const questionBank: Record<string, string[]> = {
   "Kinh tế số": ["Phân tích tác động của nền tảng số đến chi phí giao dịch và cấu trúc thị trường.", "Hiệu ứng mạng lưới là gì? Nêu ví dụ trong một nền tảng tại Việt Nam.", "Dữ liệu trở thành tài sản kinh tế như thế nào và cần quản trị ra sao?", "So sánh mô hình kinh doanh nền tảng với mô hình kinh doanh truyền thống.", "Phân tích cơ hội và rủi ro của trí tuệ nhân tạo đối với năng suất lao động.", "Thương mại điện tử xuyên biên giới tạo ra những thách thức nào cho doanh nghiệp nhỏ?", "Giải thích khái niệm kinh tế chia sẻ và đánh giá một ví dụ thực tế.", "Doanh nghiệp cần những năng lực số nào để chuyển đổi số thành công?", "Phân tích vai trò của thanh toán số trong tài chính toàn diện.", "Quyền riêng tư dữ liệu ảnh hưởng thế nào đến niềm tin và tăng trưởng nền tảng?"],
   "Quản trị kinh doanh": ["Phân tích cách doanh nghiệp xây dựng lợi thế cạnh tranh bền vững.", "So sánh lãnh đạo chuyển đổi và lãnh đạo giao dịch; khi nào nên áp dụng?", "Trình bày các bước xây dựng kế hoạch marketing cho sản phẩm mới.", "Phân tích cách quản trị rủi ro trong quyết định mở rộng thị trường.", "Văn hóa tổ chức tác động thế nào đến hiệu quả đổi mới sáng tạo?", "Đề xuất chỉ số KPI phù hợp để đánh giá hiệu quả một nhóm dự án.", "Phân biệt chiến lược cấp công ty và chiến lược cấp đơn vị kinh doanh.", "Doanh nghiệp nên xử lý xung đột lợi ích giữa tăng trưởng và trách nhiệm xã hội thế nào?", "Phân tích vai trò của trải nghiệm khách hàng trong giữ chân khách hàng.", "Một doanh nghiệp nhỏ có ngân sách hạn chế nên ưu tiên nguồn lực theo nguyên tắc nào?"]
 };
 
-function RandomInteractionCard({ tool, question, result, challengeSeconds, busy, canCreate, canExport, onRun, onStartTimer, onCopy, onExport }: {
+function FullscreenToggle({ fullscreen, onToggle }: { fullscreen: boolean; onToggle: () => void }) {
+  return <button type="button" className="random-fullscreen-toggle" onClick={onToggle} aria-label={fullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"} title={fullscreen ? "Thoát toàn màn hình" : "Toàn màn hình"}>{fullscreen ? <Minimize size={17} /> : <Expand size={17} />}<span>{fullscreen ? "Thu nhỏ" : "Toàn màn hình"}</span></button>;
+}
+
+function RandomInteractionCard({ tool, question, result, challengeSeconds, busy, canCreate, canExport, fullscreen, onToggleFullscreen, onRun, onStartTimer, onCopy, onExport }: {
   tool: Tool;
   question: string;
   result: InteractionResult | null;
@@ -129,6 +134,8 @@ function RandomInteractionCard({ tool, question, result, challengeSeconds, busy,
   busy: boolean;
   canCreate: boolean;
   canExport: boolean;
+  fullscreen: boolean;
+  onToggleFullscreen: () => void;
   onRun: () => void;
   onStartTimer: () => void;
   onCopy: () => void;
@@ -148,7 +155,7 @@ function RandomInteractionCard({ tool, question, result, challengeSeconds, busy,
     {title && <strong className="random-interaction-title">{title}</strong>}
     <p>{body}</p>
     {tool === "true-false" && result?.answer && <><button className="random-secondary-action" type="button" onClick={() => setAnswerVisible((visible) => !visible)}>{answerVisible ? "Ẩn đáp án" : "Hiện đáp án"}</button>{answerVisible && <p className="random-interaction-answer"><strong>Đáp án:</strong> {result.answer}</p>}</>}
-    <button className="workspace-primary" type="button" onClick={onRun} disabled={busy || !canCreate}><Shuffle size={16} /> {busy ? "Đang chọn..." : action}</button>
+    <div className="random-run-actions"><button className="workspace-primary" type="button" onClick={onRun} disabled={busy || !canCreate}><Shuffle size={16} /> {busy ? "Đang chọn..." : action}</button><FullscreenToggle fullscreen={fullscreen} onToggle={onToggleFullscreen} /></div>
     {tool === "challenge" && result && <button className="random-secondary-action random-challenge-timer" type="button" onClick={onStartTimer} disabled={challengeSeconds > 0}>{challengeSeconds > 0 ? `Còn ${challengeSeconds} giây` : "Bắt đầu 60 giây"}</button>}
     {result && canExport && <div className="random-result-actions"><button type="button" onClick={onCopy}><Copy size={15} /> Sao chép</button><button type="button" onClick={onExport}><Download size={15} /> Tải CSV</button></div>}
     {isQuestion && question && canExport && <button className="random-secondary-action" type="button" onClick={onCopy}><Copy size={15} /> Sao chép câu hỏi</button>}
@@ -157,6 +164,7 @@ function RandomInteractionCard({ tool, question, result, challengeSeconds, busy,
 
 function shuffle<T>(items: T[]) { const result = [...items]; for (let i = result.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [result[i], result[j]] = [result[j], result[i]]; } return result; }
 function vietnamDateKey() { return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" }).format(new Date()); }
+function formatVietnamDrawTime(value: string) { return new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(value)); }
 function playWheelSound() {
   try {
     const Ctx = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -165,6 +173,30 @@ function playWheelSound() {
     for (let i = 0; i < 22; i++) { const at = start + i * (0.035 + i * 0.006); const oscillator = context.createOscillator(); const gain = context.createGain(); oscillator.type = "triangle"; oscillator.frequency.setValueAtTime(i === 21 ? 880 : 280 + (i % 3) * 80, at); gain.gain.setValueAtTime(0.001, at); gain.gain.exponentialRampToValueAtTime(i === 21 ? 0.15 : 0.04, at + 0.006); gain.gain.exponentialRampToValueAtTime(0.001, at + 0.045); oscillator.connect(gain); gain.connect(context.destination); oscillator.start(at); oscillator.stop(at + 0.05); }
     window.setTimeout(() => void context.close(), 2200);
   } catch { /* Sound can be blocked by browser preferences. */ }
+}
+
+function WheelSegments({ entries }: { entries: Array<{ name: string; code?: string }> }) {
+  const count = Math.max(entries.length, 1);
+  const slice = 360 / count;
+  const point = (angle: number, radius: number) => {
+    const radians = (angle - 90) * Math.PI / 180;
+    return { x: 200 + radius * Math.cos(radians), y: 200 + radius * Math.sin(radians) };
+  };
+  return <svg className="random-wheel-art" viewBox="0 0 400 400" aria-hidden="true">
+    {entries.map((entry, index) => {
+      const start = point(index * slice, 198); const end = point((index + 1) * slice, 198);
+      const mid = index * slice + slice / 2; const label = point(mid, 139); const radialRotation = mid - 90; const textRotation = radialRotation > 90 && radialRotation < 270 ? radialRotation + 180 : radialRotation;
+      const largeArc = slice > 180 ? 1 : 0;
+      const color = wheelColors[index % wheelColors.length];
+      const studentLabel = `${entry.code ? `${entry.code} ` : ""}${entry.name}`;
+      const maxChars = count <= 24 ? 28 : count <= 60 ? 22 : count <= 100 ? 16 : count <= 240 ? 9 : 5;
+      const fontSize = count <= 24 ? 11 : count <= 60 ? 8 : count <= 100 ? 6 : count <= 240 ? 4 : 2.5;
+      return <g key={`${index}-${entry.name}`}>
+        <path d={`M 200 200 L ${start.x} ${start.y} A 198 198 0 ${largeArc} 1 ${end.x} ${end.y} Z`} fill={color} stroke="#fff" strokeWidth="1.5" />
+        {!!entries.length && <text x={label.x} y={label.y} transform={`rotate(${textRotation}, ${label.x}, ${label.y})`} textAnchor="middle" dominantBaseline="middle" className={`random-wheel-label${index % 4 === 0 || index % 4 === 1 ? " is-light" : ""}`} style={{ fontSize }}>{studentLabel.length > maxChars ? `${studentLabel.slice(0, maxChars - 1)}…` : studentLabel}</text>}
+      </g>;
+    })}
+  </svg>;
 }
 
 export default function RandomPickerPage({ canCreate, canUpdate = false, canDelete = false, canExport = false, questionPermissions = { create: false, update: false, delete: false } }: { canCreate: boolean; canUpdate?: boolean; canDelete?: boolean; canExport?: boolean; questionPermissions?: { read?: boolean; create: boolean; update: boolean; delete: boolean } }) {
@@ -181,6 +213,9 @@ export default function RandomPickerPage({ canCreate, canUpdate = false, canDele
   const [courseFilter, setCourseFilter] = useState("all");
   const [draws, setDraws] = useState<Draw[]>([]); const [question, setQuestion] = useState(""); const [questionTopic, setQuestionTopic] = useState("Kinh tế số"); const [questionTopics, setQuestionTopics] = useState<RandomQuestionTopic[]>([]); const [questionBankError, setQuestionBankError] = useState(""); const [showQuestionManager, setShowQuestionManager] = useState(false); const [interactionResult, setInteractionResult] = useState<InteractionResult | null>(null); const [challengeSeconds, setChallengeSeconds] = useState(0);
   const [wheelDegrees, setWheelDegrees] = useState(0); const [spinning, setSpinning] = useState(false); const [celebrate, setCelebrate] = useState(false); const [callHistory, setCallHistory] = useState<RandomHistory[]>([]);
+  const [wheelPanel, setWheelPanel] = useState<"items" | "results">("items"); const [wheelSidebarCollapsed, setWheelSidebarCollapsed] = useState(false); const [fullscreen, setFullscreen] = useState(false); const [wheelOrder, setWheelOrder] = useState<Draw[]>([]); const [winnerPopup, setWinnerPopup] = useState<{ student: Draw; color: string } | null>(null); const [selectedRollResultIds, setSelectedRollResultIds] = useState<Set<string>>(() => new Set()); const [restoringRollResults, setRestoringRollResults] = useState(false);
+  const interactionViewRef = useRef<HTMLDivElement>(null);
+  const wheelRef = useRef<HTMLDivElement>(null); const wheelPointerRef = useRef<HTMLDivElement>(null);
   const timer = useRef<number | undefined>(undefined);
   const challengeTimer = useRef<number | undefined>(undefined);
   const historyRequestId = useRef(0);
@@ -274,7 +309,41 @@ export default function RandomPickerPage({ canCreate, canUpdate = false, canDele
   const roster = useMemo(() => filteredStudents.map((item) => ({ id: item.id, code: item.studentCode, name: item.fullName })), [filteredStudents]);
   const manualRoster = useMemo<Array<{ id?: string; code?: string; name: string }>>(() => manualNames.split(/\r?\n/).map((name) => name.trim()).filter(Boolean).map((name) => ({ name })), [manualNames]);
   const participants = useManualRoster ? manualRoster : students.length ? roster : manualRoster;
-  const todayDrawn = useMemo(() => new Set(callHistory.filter((item) => item.draw_type === "roll_call" && item.drawn_on === vietnamDateKey()).map((item) => item.student_id ?? `${item.student_code ?? ""}:${item.student_name ?? ""}`)), [callHistory]);
+  useEffect(() => { setWheelOrder(participants); }, [participants]);
+  useEffect(() => {
+    const update = () => setFullscreen(document.fullscreenElement === interactionViewRef.current);
+    document.addEventListener("fullscreenchange", update);
+    return () => document.removeEventListener("fullscreenchange", update);
+  }, []);
+  useEffect(() => {
+    let frame = 0;
+    const updatePointerColor = () => {
+      const wheel = wheelRef.current;
+      const pointer = wheelPointerRef.current;
+      if (!wheel || !pointer) return;
+      const matrix = new DOMMatrixReadOnly(getComputedStyle(wheel).transform);
+      const angle = Math.atan2(matrix.b, matrix.a) * 180 / Math.PI;
+      const sector = 360 / Math.max(1, wheelOrder.length);
+      const pointedAt = Math.floor((((90 - angle) % 360 + 360) % 360) / sector);
+      pointer.style.setProperty("--pointer-color", wheelColors[pointedAt % wheelColors.length]);
+      if (spinning) frame = window.requestAnimationFrame(updatePointerColor);
+    };
+    updatePointerColor();
+    return () => { if (frame) window.cancelAnimationFrame(frame); };
+  }, [spinning, wheelDegrees, wheelOrder.length]);
+  useEffect(() => {
+    if (!winnerPopup) return;
+    const dismissOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setWinnerPopup(null); };
+    window.addEventListener("keydown", dismissOnEscape);
+    return () => window.removeEventListener("keydown", dismissOnEscape);
+  }, [winnerPopup]);
+  const filteredCallHistory = useMemo(() => {
+    const currentIds = new Set(participants.map((item) => item.id).filter((id): id is string => Boolean(id)));
+    const currentKeys = new Set(participants.map((item) => `${item.code ?? ""}:${item.name}`));
+    return callHistory.filter((item) => item.draw_type === "roll_call" && item.drawn_on === vietnamDateKey()
+      && (item.student_id ? currentIds.has(item.student_id) : currentKeys.has(`${item.student_code ?? ""}:${item.student_name ?? ""}`)));
+  }, [callHistory, participants]);
+  const todayDrawn = useMemo(() => new Set(filteredCallHistory.map((item) => item.student_id ?? `${item.student_code ?? ""}:${item.student_name ?? ""}`)), [filteredCallHistory]);
   const remaining = useMemo(() => participants.filter((item) => !todayDrawn.has(item.id ?? `${item.code ?? ""}:${item.name}`)), [participants, todayDrawn]);
   const currentRollHistory = draws[0]?.id ? callHistory.find((item) => item.student_id === draws[0].id) : undefined;
 
@@ -338,9 +407,24 @@ export default function RandomPickerPage({ canCreate, canUpdate = false, canDele
     setError(""); setNotice("");
     if (remaining.length === 0) { setNotice("Danh sách đã được gọi hết trong ngày; các lượt đã chọn sẽ không bị gọi trùng."); return; }
     const pool = remaining.length ? remaining : participants; const winner = pool[Math.floor(Math.random() * pool.length)];
-    const index = participants.findIndex((item) => item.id === winner.id && item.code === winner.code && item.name === winner.name); const sector = 360 / participants.length;
-    setSpinning(true); setCelebrate(false); setDraws([]); setWheelDegrees((value) => value + 1800 + (360 - (index + 0.5) * sector)); playWheelSound();
-    timer.current = window.setTimeout(() => { setSpinning(false); setDraws([winner]); setCelebrate(true); void record("roll_call", [winner], { source: useManualRoster || !students.length ? "manual" : "students" }); window.setTimeout(() => setCelebrate(false), 2500); }, 4200);
+    const index = wheelOrder.findIndex((item) => item.id === winner.id && item.code === winner.code && item.name === winner.name); const sector = 360 / Math.max(1, wheelOrder.length);
+    const currentRotation = ((wheelDegrees % 360) + 360) % 360;
+    const targetRotation = 90 - (index + 0.5) * sector;
+    const rotationDelta = ((targetRotation - currentRotation) % 360 + 360) % 360;
+    setSpinning(true); setCelebrate(false); setDraws([]); setWheelDegrees((value) => value + 1800 + rotationDelta); playWheelSound();
+    timer.current = window.setTimeout(() => { setSpinning(false); setDraws([winner]); setWinnerPopup({ student: winner, color: wheelColors[index % wheelColors.length] }); setCelebrate(true); void record("roll_call", [winner], { source: useManualRoster || !students.length ? "manual" : "students" }); window.setTimeout(() => setCelebrate(false), 2500); }, 4200);
+  }
+
+  async function toggleFullscreen() {
+    if (!interactionViewRef.current) return;
+    try {
+      if (document.fullscreenElement === interactionViewRef.current) await document.exitFullscreen();
+      else await interactionViewRef.current.requestFullscreen();
+    } catch { setNotice("Trình duyệt chưa cho phép mở chế độ toàn màn hình."); }
+  }
+
+  function reorderWheel(mode: "shuffle" | "sort") {
+    setWheelOrder((items) => mode === "shuffle" ? shuffle(items) : [...items].sort((a, b) => a.name.localeCompare(b.name, "vi")));
   }
 
   async function setAttendance(item: RandomHistory, status: "present" | "absent") {
@@ -373,6 +457,21 @@ export default function RandomPickerPage({ canCreate, canUpdate = false, canDele
       setNotice(`Đã chuyển ${ids.length.toLocaleString("vi-VN")} dòng lịch sử vào thùng rác.`);
       await reloadHistory();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Không xóa được lịch sử đã chọn."); }
+  }
+
+  async function restoreRollResults(ids: string[]) {
+    const uniqueIds = [...new Set(ids)].filter((id) => filteredCallHistory.some((item) => item.id === id));
+    if (!canDelete || !uniqueIds.length || restoringRollResults) return;
+    setRestoringRollResults(true);
+    setError("");
+    try {
+      await randomPickerService.deleteHistory(uniqueIds);
+      setCallHistory((items) => items.filter((item) => !uniqueIds.includes(item.id)));
+      setSelectedRollResultIds((items) => { const next = new Set(items); uniqueIds.forEach((id) => next.delete(id)); return next; });
+      setNotice(`${uniqueIds.length.toLocaleString("vi-VN")} sinh viên đã được trả về danh sách gọi lại.`);
+      await reloadHistory();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Không thể khôi phục sinh viên về danh sách gọi lại."); }
+    finally { setRestoringRollResults(false); }
   }
 
   function openHistoryDetail(item: RandomHistory) {
@@ -515,7 +614,11 @@ export default function RandomPickerPage({ canCreate, canUpdate = false, canDele
 </div>
         <label className="random-manual-toggle"><input type="checkbox" checked={useManualRoster} onChange={(event) => setUseManualRoster(event.target.checked)} /> Dùng danh sách tự nhập thay cho danh sách từ hệ thống</label>
         <label className="random-manual-roster">Danh sách thêm (mỗi tên một dòng, dùng khi không chọn được lớp)<textarea rows={3} value={manualNames} onChange={(event) => setManualNames(event.target.value)} placeholder="Nguyễn Văn A&#10;Trần Thị B" /></label>
-        {tool === "roll-call" ? <div className="random-roll-stage"><div className="random-wheel" style={{ background: `conic-gradient(${participants.map((_, index) => `${colors[index % colors.length]} ${index * (100 / Math.max(1, participants.length))}% ${(index + 1) * (100 / Math.max(1, participants.length))}%`).join(",")})`, transform: `rotate(${wheelDegrees}deg)` }}><span>{spinning ? <Shuffle size={28} /> : draws[0]?.name ?? <UsersRound size={30} />}</span></div><div className="random-roll-caption">{draws[0] ? <><small>SINH VIÊN ĐƯỢC CHỌN</small><strong>{draws[0].name}</strong><span>{draws[0].code ?? ""}</span></> : <p>{remaining.length} lượt chưa gọi trong ngày</p>}</div><button type="button" className="workspace-primary" disabled={spinning || loading || !canCreate} onClick={startRollCall}><Shuffle size={17} /> {spinning ? "Đang quay..." : "Quay gọi tên"}</button>{draws[0]?.id && canUpdate && <div className="random-attendance-actions"><button type="button" disabled={!currentRollHistory} onClick={() => { if (currentRollHistory) void setAttendance(currentRollHistory, "present"); }}>Có mặt</button><button type="button" disabled={!currentRollHistory} onClick={() => { if (currentRollHistory) void setAttendance(currentRollHistory, "absent"); }}>Vắng mặt</button></div>}</div> : (tool === "questions" || tool === "cases" || tool === "challenge" || tool === "debate" || tool === "keywords" || tool === "true-false") ? <RandomInteractionCard tool={tool} question={question} result={interactionResult} challengeSeconds={challengeSeconds} busy={busy} canCreate={canCreate} canExport={canExport} onRun={() => void runOtherTool()} onStartTimer={startChallengeTimer} onCopy={() => void copyResults()} onExport={exportCsv} /> : <div className="random-result-panel">{draws.length ? <div className={tool === "groups" ? "random-groups-grid" : "random-draw-list"}>{tool === "groups" ? Array.from({ length: groupCount }, (_, index) => <article key={index}><h3>Nhóm {index + 1}</h3><ol>{draws.filter((item) => item.name.startsWith(`Nhóm ${index + 1}: `)).map((item) => <li key={`${index}-${item.id ?? item.name}`}>{item.name.replace(`Nhóm ${index + 1}: `, "")}</li>)}</ol></article>) : draws.map((item, index) => <div key={`${index}-${item.id ?? item.name}`}><span>{tool === "roles" ? "Vai" : tool === "presentation" ? `#${index + 1}` : `${Math.floor(index / 2) + 1}`}</span>{item.name.replace(/^\d+\. /, "").replace(/^\d+: /, "")}</div>)}</div> : <div className="random-result-placeholder"><Shuffle size={25} /><strong>Kết quả sẽ xuất hiện tại đây</strong><span>{participants.length} người trong danh sách hiện tại</span></div>}{draws.length > 0 && canExport && <div className="random-result-actions"><button type="button" onClick={() => void copyResults()}><Copy size={15} /> Sao chép</button><button type="button" onClick={exportCsv}><Download size={15} /> Tải CSV</button></div>}<button className="workspace-primary" type="button" onClick={() => void runOtherTool()} disabled={busy || loading || !canCreate}><Shuffle size={16} /> {busy ? "Đang xáo trộn..." : tool === "groups" ? "Chia nhóm" : tool === "pairs" ? "Ghép cặp" : tool === "roles" ? "Phân vai ngẫu nhiên" : "Bốc thứ tự"}</button></div>}</> : <div className="random-readonly-message">Bạn chưa được cấp quyền tạo kết quả Random.</div>}
+        <div ref={interactionViewRef} className="random-interaction-view">
+        {tool === "roll-call" ? <div className={`random-wheel-workspace${wheelSidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
+          <div className="random-roll-stage"><div className="random-wheel-container"><div ref={wheelPointerRef} className="random-wheel-pointer" aria-hidden="true" /><div ref={wheelRef} className="random-wheel" style={{ transform: `rotate(${wheelDegrees}deg)` }}><WheelSegments entries={wheelOrder} /><span className="random-wheel-hub" aria-hidden="true" /></div></div><div className="random-roll-caption">{draws[0] ? <><small>SINH VIÊN ĐƯỢC CHỌN</small><strong>{draws[0].name}</strong><span>{draws[0].code ?? ""}</span></> : <p>{remaining.length} lượt chưa gọi trong ngày</p>}</div><div className="random-run-actions"><button type="button" className="workspace-primary" disabled={spinning || loading || !canCreate} onClick={startRollCall}><Shuffle size={17} /> {spinning ? "Đang quay..." : "Quay gọi tên"}</button><FullscreenToggle fullscreen={fullscreen} onToggle={() => void toggleFullscreen()} /></div>{draws[0]?.id && canUpdate && <div className="random-attendance-actions"><button type="button" disabled={!currentRollHistory} onClick={() => { if (currentRollHistory) void setAttendance(currentRollHistory, "present"); }}>Có mặt</button><button type="button" disabled={!currentRollHistory} onClick={() => { if (currentRollHistory) void setAttendance(currentRollHistory, "absent"); }}>Vắng mặt</button></div>}</div>
+          <aside className={`random-wheel-sidebar${canDelete ? " can-restore" : ""}`}><button type="button" className="random-wheel-panel-toggle" onClick={() => setWheelSidebarCollapsed((collapsed) => !collapsed)} aria-label={wheelSidebarCollapsed ? "Mở rộng danh sách" : "Thu gọn danh sách"} aria-expanded={!wheelSidebarCollapsed} title={wheelSidebarCollapsed ? "Mở rộng danh sách" : "Thu gọn danh sách"}>{wheelSidebarCollapsed ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}</button><div className="random-wheel-tabs"><button type="button" className={wheelPanel === "items" ? "active" : ""} onClick={() => setWheelPanel("items")}>Mục <b>{participants.length}</b></button><button type="button" className={wheelPanel === "results" ? "active" : ""} onClick={() => setWheelPanel("results")}>Kết quả <b>{filteredCallHistory.length}</b></button></div>{wheelPanel === "items" ? <><div className="random-wheel-list-actions"><button type="button" onClick={() => reorderWheel("shuffle")}><Shuffle size={15} /> Xáo trộn</button><button type="button" onClick={() => reorderWheel("sort")}><ArrowDownAZ size={15} /> Sắp xếp</button></div><div className="random-wheel-items">{wheelOrder.map((item, index) => <div key={`${item.id ?? item.code ?? item.name}-${index}`}><span>{index + 1}</span><span>{item.code ? `${item.code} ` : ""}{item.name}</span>{todayDrawn.has(item.id ?? `${item.code ?? ""}:${item.name}`) && <small>Đã gọi</small>}</div>)}{!wheelOrder.length && <p>Hãy chọn lớp hoặc nhập danh sách tên để bắt đầu.</p>}</div><div className="random-wheel-list-footer"><span><UsersRound size={15} /> {participants.length} mục</span><button type="button" onClick={() => setUseManualRoster((value) => !value)}>{useManualRoster ? "Dùng danh sách sinh viên" : "Nhập danh sách"}</button></div></> : <><div className="random-wheel-result-actions"><label><input type="checkbox" aria-label="Chọn tất cả sinh viên trong kết quả bộ lọc này" checked={filteredCallHistory.length > 0 && filteredCallHistory.every((item) => selectedRollResultIds.has(item.id))} onChange={(event) => setSelectedRollResultIds((previous) => { const next = new Set(previous); filteredCallHistory.forEach((item) => event.target.checked ? next.add(item.id) : next.delete(item.id)); return next; })} /> Chọn tất cả</label>{canDelete && <button type="button" disabled={!filteredCallHistory.some((item) => selectedRollResultIds.has(item.id)) || restoringRollResults} onClick={() => void restoreRollResults(filteredCallHistory.filter((item) => selectedRollResultIds.has(item.id)).map((item) => item.id))}><RotateCcw size={14} />{restoringRollResults ? "Đang khôi phục..." : `Khôi phục đã chọn (${filteredCallHistory.filter((item) => selectedRollResultIds.has(item.id)).length})`}</button>}</div><div className="random-wheel-results">{filteredCallHistory.map((item, index) => <div className={canDelete ? "has-restore" : ""} key={item.id}>{canDelete && <input type="checkbox" aria-label={`Chọn ${item.student_name} để gọi lại`} checked={selectedRollResultIds.has(item.id)} onChange={(event) => setSelectedRollResultIds((previous) => { const next = new Set(previous); if (event.target.checked) next.add(item.id); else next.delete(item.id); return next; })} />}<b>{index + 1}</b><span><strong>{item.student_name}</strong><small>{formatVietnamDrawTime(item.created_at)}</small></span>{canDelete && <button type="button" aria-label={`Khôi phục ${item.student_name} để gọi lại`} title="Khôi phục để gọi lại" disabled={restoringRollResults} onClick={() => void restoreRollResults([item.id])}><RotateCcw size={14} /></button>}</div>)}{!filteredCallHistory.length && <p>Chưa có sinh viên được gọi trong bộ lọc hiện tại hôm nay.</p>}</div></>}</aside>
+        </div> : (tool === "questions" || tool === "cases" || tool === "challenge" || tool === "debate" || tool === "keywords" || tool === "true-false") ? <RandomInteractionCard tool={tool} question={question} result={interactionResult} challengeSeconds={challengeSeconds} busy={busy} canCreate={canCreate} canExport={canExport} fullscreen={fullscreen} onToggleFullscreen={() => void toggleFullscreen()} onRun={() => void runOtherTool()} onStartTimer={startChallengeTimer} onCopy={() => void copyResults()} onExport={exportCsv} /> : <div className="random-result-panel">{draws.length ? <div className={tool === "groups" ? "random-groups-grid" : "random-draw-list"}>{tool === "groups" ? Array.from({ length: groupCount }, (_, index) => <article key={index}><h3>Nhóm {index + 1}</h3><ol>{draws.filter((item) => item.name.startsWith(`Nhóm ${index + 1}: `)).map((item) => <li key={`${index}-${item.id ?? item.name}`}>{item.name.replace(`Nhóm ${index + 1}: `, "")}</li>)}</ol></article>) : draws.map((item, index) => <div key={`${index}-${item.id ?? item.name}`}><span>{tool === "roles" ? "Vai" : tool === "presentation" ? `#${index + 1}` : `${Math.floor(index / 2) + 1}`}</span>{item.name.replace(/^\d+\. /, "").replace(/^\d+: /, "")}</div>)}</div> : <div className="random-result-placeholder"><Shuffle size={25} /><strong>Kết quả sẽ xuất hiện tại đây</strong><span>{participants.length} người trong danh sách hiện tại</span></div>}{draws.length > 0 && canExport && <div className="random-result-actions"><button type="button" onClick={() => void copyResults()}><Copy size={15} /> Sao chép</button><button type="button" onClick={exportCsv}><Download size={15} /> Tải CSV</button></div>}<div className="random-run-actions"><button className="workspace-primary" type="button" onClick={() => void runOtherTool()} disabled={busy || loading || !canCreate}><Shuffle size={16} /> {busy ? "Đang xáo trộn..." : tool === "groups" ? "Chia nhóm" : tool === "pairs" ? "Ghép cặp" : tool === "roles" ? "Phân vai ngẫu nhiên" : "Bốc thứ tự"}</button><FullscreenToggle fullscreen={fullscreen} onToggle={() => void toggleFullscreen()} /></div></div>}</div></> : <div className="random-readonly-message">Bạn chưa được cấp quyền tạo kết quả Random.</div>}
       </div>
     </div>
 
@@ -542,6 +645,7 @@ export default function RandomPickerPage({ canCreate, canUpdate = false, canDele
     </section>
     {historyDetail && <div className="random-history-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setHistoryDetail(null); }}><section className="random-history-modal" role="dialog" aria-modal="true" aria-labelledby="random-history-modal-title"><header><div><Eye size={18} /><h2 id="random-history-modal-title">Chi tiết lịch sử</h2></div><button type="button" aria-label="Đóng" onClick={() => setHistoryDetail(null)}>×</button></header><p><strong>{historyDetail.student_name ?? String(historyDetail.results?.topic ?? historyDetail.draw_type.replaceAll("_", " "))}</strong></p><p>{historyDetail.student_code ? `${historyDetail.student_code} · ` : ""}{historyDetail.class_name ?? "Danh sách thủ công"} · {formatDateTime(historyDetail.created_at)}</p><pre>{JSON.stringify(historyDetail.results, null, 2)}</pre>{canUpdate && <div className="random-history-note-editor">{editingHistoryNote ? <><label>Ghi chú<textarea rows={3} value={historyNoteDraft} onChange={(event) => setHistoryNoteDraft(event.target.value)} /></label><button type="button" disabled={savingHistoryNote} onClick={() => void saveHistoryNote()}>{savingHistoryNote ? "Đang lưu..." : "Lưu ghi chú"}</button><button type="button" disabled={savingHistoryNote} onClick={() => { setEditingHistoryNote(false); setHistoryNoteDraft(String(historyDetail.results?.note ?? "")); }}>Hủy</button></> : <><p>{historyDetail.results?.note ? <>Ghi chú: {String(historyDetail.results.note)}</> : "Chưa có ghi chú."}</p><button type="button" onClick={() => setEditingHistoryNote(true)}>Sửa ghi chú</button></>}</div>}{historyDetail.draw_type === "roll_call" && canUpdate && <footer><button type="button" className={historyDetail.attendance_status === "present" ? "selected" : ""} onClick={() => void setAttendance(historyDetail, "present")}>Có mặt</button><button type="button" className={historyDetail.attendance_status === "absent" ? "selected absent" : ""} onClick={() => void setAttendance(historyDetail, "absent")}>Vắng</button></footer>}</section></div>}
         {showQuestionManager && <RandomQuestionManager topics={questionTopics} permissions={questionPermissions} activityType={historyDrawType} activityLabel={tools.find((item) => item.id === tool)?.label ?? "Random"} loadError={questionBankError} onClose={() => setShowQuestionManager(false)} onChanged={reloadQuestionBank} />}
+    {winnerPopup && createPortal(<div className="random-winner-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setWinnerPopup(null); }}><section className="random-winner-modal" role="dialog" aria-modal="true" aria-labelledby="random-winner-title"><header style={{ backgroundColor: winnerPopup.color }}><h2 id="random-winner-title">Sinh viên được chọn</h2><button type="button" aria-label="Đóng" onClick={() => setWinnerPopup(null)}>×</button></header><div className="random-winner-details"><span>{winnerPopup.student.code ?? "Sinh viên"}</span><strong>{winnerPopup.student.name}</strong></div><footer><button type="button" onClick={() => setWinnerPopup(null)}>Đóng</button></footer></section></div>, interactionViewRef.current ?? document.body)}
     {celebrate && <div className="random-fireworks" aria-hidden="true">{Array.from({ length: 26 }, (_, index) => <i key={index} style={{ "--x": `${(index * 37) % 100}%`, "--y": `${(index * 53) % 75}%`, "--h": `${(index * 29) % 360}deg`, "--delay": `${(index % 8) * 45}ms` } as CSSProperties} />)}</div>}
   </section>;
 }
