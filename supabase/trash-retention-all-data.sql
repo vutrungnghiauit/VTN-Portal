@@ -14,6 +14,7 @@ create table if not exists public.system_trash_registry (
   primary key (entity_type, entity_id)
 );
 create index if not exists system_trash_registry_expiry_idx on public.system_trash_registry(purge_at);
+create index if not exists system_trash_registry_entity_deleted_idx on public.system_trash_registry(entity_type,deleted_at desc);
 alter table public.system_trash_registry enable row level security;
 revoke all on public.system_trash_registry from anon, authenticated;
 
@@ -243,6 +244,21 @@ begin
 end;
 $$;
 grant execute on function public.list_system_trash() to authenticated;
+
+create or replace function public.list_system_trash_by_type(p_entity_type text)
+returns table(entity_type text, entity_id text, module_key text, record_label text, deleted_at timestamptz, purge_at timestamptz)
+language plpgsql security definer set search_path = '' as $$
+begin
+  if (select auth.uid()) is null then raise exception 'Cần đăng nhập để xem thùng rác'; end if;
+  return query select r.entity_type,r.entity_id,r.module_key,r.record_label,r.deleted_at,r.purge_at
+    from public.system_trash_registry r
+    where r.entity_type = p_entity_type
+      and r.entity_type not in ('workspace_records','students','support_tickets')
+      and (public.is_system_admin() or public.can_access_module(r.module_key,'delete') or public.can_access_module(r.module_key,'restore'))
+    order by r.deleted_at desc;
+end;
+$$;
+grant execute on function public.list_system_trash_by_type(text) to authenticated;
 
 create or replace function public.set_system_trash_state(p_entity_type text,p_entity_id text,p_restore boolean default false)
 returns void language plpgsql security definer set search_path = '' as $$
