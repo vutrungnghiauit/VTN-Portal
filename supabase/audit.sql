@@ -19,6 +19,7 @@ alter table public.system_audit_logs add column if not exists purge_at timestamp
 create index if not exists system_audit_actor_time_idx on public.system_audit_logs(actor_id,event_at desc);
 create index if not exists system_audit_subject_time_idx on public.system_audit_logs(subject_user_id,event_at desc);
 create index if not exists system_audit_module_action_idx on public.system_audit_logs(module_key,action,event_at desc);
+create index if not exists system_audit_active_time_idx on public.system_audit_logs(event_at desc) where deleted_at is null;
 alter table public.system_audit_logs enable row level security;
 drop policy if exists "Scoped audit log visibility" on public.system_audit_logs;
 create policy "Scoped audit log visibility" on public.system_audit_logs for select to authenticated
