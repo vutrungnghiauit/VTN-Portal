@@ -12,6 +12,7 @@ import { SortableTableHeader } from "../../components/SortableTableHeader";
 import SearchableFilter from "../../components/SearchableFilter";
 import { sortTableRows } from "../../lib/table-sort";
 import { formatSemesterLabel } from "../../lib/semester-groups";
+import { hasUserSelectedAcademicPeriod, markAcademicPeriodSelectedByUser } from "../../lib/current-academic-period";
 import "./teaching-plan-schedule.css";
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -381,7 +382,7 @@ export default function TeachingPlanSchedulePage({ canImportSourceData = false, 
   const initialPeriod = activeTeachingPeriod(schedules, initialToday);
   const [todayKey, setTodayKey] = useState(initialToday);
   const [year, setYear] = useState(initialPeriod?.year ?? defaultYear);
-  const [semesterFilter, setSemesterFilter] = useState("all");
+  const [semesterFilter, setSemesterFilter] = useState(initialPeriod?.term ?? "all");
   const [sourceSchedules, setSourceSchedules] = useState<AcademicSchedule[]>([]);
   const [scheduleOverrides, setScheduleOverrides] = useState<AcademicSchedule[]>([]);
   const [activeScheduleYear, setActiveScheduleYear] = useState<string | null>(null);
@@ -439,10 +440,10 @@ export default function TeachingPlanSchedulePage({ canImportSourceData = false, 
   }, []);
 
   useEffect(() => {
-    if (!currentPeriod) return;
+    if (!currentPeriod || hasUserSelectedAcademicPeriod('teaching-progress')) return;
     setYear(currentPeriod.year);
-    setSemesterFilter("all");
-  }, [currentPeriod?.year]);
+    setSemesterFilter(currentPeriod.term);
+  }, [currentPeriod?.year, currentPeriod?.term]);
 
   useEffect(() => {
     let mounted = true;
@@ -471,6 +472,7 @@ export default function TeachingPlanSchedulePage({ canImportSourceData = false, 
   }
 
   function chooseYear(nextYear: string) {
+    markAcademicPeriodSelectedByUser('teaching-progress');
     setYear(nextYear);
     setSemesterFilter("all");
     setPlanPage(1);
@@ -478,6 +480,7 @@ export default function TeachingPlanSchedulePage({ canImportSourceData = false, 
   }
 
   function chooseSemester(nextSemester: string) {
+    markAcademicPeriodSelectedByUser('teaching-progress');
     setSemesterFilter(nextSemester);
     setPlanPage(1);
     setSelectedPlanIds(new Set());
