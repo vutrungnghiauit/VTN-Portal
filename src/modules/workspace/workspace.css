@@ -691,6 +691,14 @@
 .semesters-filter-controls { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .gradebook-filter-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .academic-advisors-filter-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.course-sections-filter-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.course-section-tabs { display: flex; gap: 8px; margin: 16px 0; padding: 5px; border: 1px solid #e5e9f0; border-radius: 10px; background: #f6f8fc; }
+.course-section-tabs button { min-height: 40px; padding: 8px 16px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #667085; font: inherit; font-weight: 600; cursor: pointer; }
+.course-section-tabs button.active { border-color: #dce5f5; background: #fff; color: #2857a4; box-shadow: 0 1px 3px #1b2b4a12; }
+.course-section-management-panel .workspace-toolbar { margin-top: 12px; }
+.course-section-management-filter-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 760px) { .course-section-management-filter-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 620px) { .course-section-tabs { flex-direction: column; } .course-section-tabs button { width: 100%; text-align: left; } .course-section-management-filter-controls { grid-template-columns: 1fr; } }
 .workspace-filter-heading > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; margin-left: auto; padding: 0 10px; border: 1px solid #e5eaf1; border-radius: 7px; background: #fff; color: #94a3b8; font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap; }
 .workspace-filter-heading > button:hover:not(:disabled) { border-color: #a9bce3; background: #f8faff; color: #283898; }
 .workspace-filter-heading > button:disabled { opacity: .7; cursor: not-allowed; }
@@ -732,6 +740,10 @@
 .workspace-data-selection > button { min-height: 31px; padding: 5px 10px; border: 1px solid #d7e1ef; border-radius: 7px; background: #fff; color: #46546b; font-size: 12px; }
 .workspace-data-selection > button:hover:not(:disabled) { border-color: #bdcdeb; background: #f8faff; color: #283898; }
 .workspace-data-selection > button:disabled { opacity: .5; cursor: not-allowed; }
+.workspace-data-selection-actions { display: flex; gap: 8px; margin-left: auto; }
+.workspace-data-selection-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 35px; padding: 5px 11px; border: 1px solid #f0caca; border-radius: 8px; background: #fffafa; color: #c24141; font: inherit; font-size: 12px; cursor: pointer; }
+.workspace-data-selection-actions button:hover:not(:disabled) { border-color: #e8a5a5; background: #fff3f3; color: #a82d2d; }
+.workspace-data-selection-actions button:disabled { opacity: .5; cursor: not-allowed; }
 .workspace-pagination > span { font-variant-numeric: tabular-nums; }
 .workspace-pagination label { display: flex; align-items: center; gap: 8px; }
 .workspace-pagination select { height: 34px; }
