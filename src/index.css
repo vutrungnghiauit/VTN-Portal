@@ -158,6 +158,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .auth-logo { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 18px; border-radius: 13px; background: #edf3ff; color: var(--color-primary); }
 .auth-eyebrow { margin: 0 0 6px; color: #8290a6; font-size: 12px; letter-spacing: .14em; font-weight: 750; }
 .auth-card h1 { margin: 0 0 7px; color: #20334f; font-size: 24px; }
+.auth-card h1.auth-login-title { text-align: center; text-transform: uppercase; }
 .auth-subtitle { margin: 0 0 22px; color: #7d8799; font-size: 12px; }
 .auth-card label { display: flex; flex-direction: column; gap: 6px; margin: 14px 0; color: #526078; font-size: 12px; font-weight: 600; }
 .auth-card input { height: 41px; padding: 0 11px; border: 1px solid #dfe4ed; border-radius: 6px; color: #293a55; font-size: 13px; }
