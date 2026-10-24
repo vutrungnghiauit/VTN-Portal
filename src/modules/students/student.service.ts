@@ -1,5 +1,8 @@
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 import type { Student, StudentInput } from "./student.types";
+import { workspaceService } from "../workspace/workspace.service";
+import { studentDeletionWarning } from "../workspace/deletion-guard";
+import { academicYearFromSemester, formatSemesterLabel, semesterIdentity } from "../../lib/semester-groups";
 
 type StudentRow = {
   id: string;
@@ -80,6 +83,73 @@ function friendlyError(error: { code?: string; message: string }) {
   return new Error(error.message || "Không thể kết nối dữ liệu sinh viên.");
 }
 
+const normalizeRosterValue = (value: unknown) => String(value ?? "").normalize("NFKC").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d").replace(/[^a-z0-9]/gi, "").toLocaleLowerCase("vi-VN");
+
+function rosterRegistrationIdentity(student: Student) {
+  try {
+    const parsed = JSON.parse(student.notes || "{}") as { sourceData?: Record<string, unknown> };
+    const sourceData = parsed.sourceData ?? {};
+    const read = (...keys: string[]) => {
+      const wanted = new Set(keys.map(normalizeRosterValue));
+      return Object.entries(sourceData).find(([key, value]) => wanted.has(normalizeRosterValue(key)) && String(value ?? "").trim())?.[1] ?? "";
+    };
+    const classCode = normalizeRosterValue(read("courseClassCode", "ma lhp") || read("courseCode", "subjectCode", "ma hoc phan", "ma mon hoc") || read("courseName", "subjectName", "ten hoc phan", "ten mon hoc"));
+    const semester = String(read("sourceTerm", "semester", "dot", "hoc ky") || student.semesterName);
+    const year = String(read("sourceAcademicYear", "academicYear", "nam hoc") || academicYearFromSemester(semester));
+    const period = semesterIdentity(formatSemesterLabel(semester, year));
+    return classCode && period ? `${normalizeRosterValue(student.studentCode)}|${classCode}|${normalizeRosterValue(year)}|${period}` : "";
+  } catch { return ""; }
+}
+
+/** Merge duplicate student enrollment profiles for the same LHP and term. */
+export async function consolidateStudentRosterDuplicates() {
+  const students = await studentService.list();
+  const groups = new Map<string, Student[]>();
+  for (const student of students) {
+    const identity = rosterRegistrationIdentity(student);
+    if (!identity) continue;
+    const group = groups.get(identity) ?? [];
+    group.push(student);
+    groups.set(identity, group);
+  }
+  let consolidated = 0;
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const ordered = [...group].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    const survivor = ordered.at(-1)!;
+    const details: Record<string, string> = {};
+    const sourceData: Record<string, string> = {};
+    let freeNote = "";
+    for (const student of ordered) {
+      try {
+        const parsed = JSON.parse(student.notes || "{}") as { details?: Record<string, unknown>; sourceData?: Record<string, unknown>; freeNote?: string };
+        for (const [key, value] of Object.entries(parsed.details ?? {})) if (String(value ?? "").trim()) details[key] = String(value);
+        for (const [key, value] of Object.entries(parsed.sourceData ?? {})) if (String(value ?? "").trim()) sourceData[key] = String(value);
+        if (parsed.freeNote?.trim()) freeNote = [...new Set([freeNote, parsed.freeNote.trim()].filter(Boolean))].join("\n");
+      } catch {
+        if (student.notes.trim()) freeNote = [...new Set([freeNote, student.notes.trim()].filter(Boolean))].join("\n");
+      }
+    }
+    const latestNonEmpty = (key: keyof Student) => [...ordered].reverse().map((student) => String(student[key] ?? "").trim()).find(Boolean) ?? "";
+    await studentService.save({
+      studentCode: survivor.studentCode,
+      fullName: latestNonEmpty("fullName"),
+      dateOfBirth: latestNonEmpty("dateOfBirth"),
+      className: latestNonEmpty("className"),
+      faculty: latestNonEmpty("faculty"),
+      semesterName: latestNonEmpty("semesterName"),
+      academicStatus: latestNonEmpty("academicStatus"),
+      email: latestNonEmpty("email"),
+      phone: latestNonEmpty("phone"),
+      notes: JSON.stringify({ source: "imported-class-rosters", details, sourceData, ...(freeNote ? { freeNote } : {}) }),
+    }, survivor.id);
+    const duplicates = ordered.filter((student) => student.id !== survivor.id);
+    await studentService.moveMergedRosterDuplicatesToTrash(duplicates.map((student) => student.id));
+    consolidated += duplicates.length;
+  }
+  return consolidated;
+}
+
 export const studentService = {
   async list(): Promise<Student[]> {
     await requireUser();
@@ -117,8 +187,30 @@ export const studentService = {
 
   async moveToTrash(id: string): Promise<void> {
     await requireUser();
+    const [students, records] = await Promise.all([this.list(), workspaceService.allRecords()]);
+    const target = students.find((student) => student.id === id);
+    if (target) {
+      const { data: role } = await client().rpc("current_role_key");
+      if (role !== "super_admin") {
+        const warning = studentDeletionWarning(target, records, students);
+        if (warning) throw new Error(warning);
+      }
+    }
     const { error } = await client().rpc("set_student_trash_state", { p_id: id, p_restore: false });
     if (error) throw friendlyError(error);
+    notifyStudentsUpdated();
+  },
+
+  /** Archive rows only after consolidateStudentRosterDuplicates has merged their populated fields. */
+  async moveMergedRosterDuplicatesToTrash(ids: string[]): Promise<void> {
+    if (!ids.length) return;
+    await requireUser();
+    for (let offset = 0; offset < ids.length; offset += 20) {
+      const chunk = ids.slice(offset, offset + 20);
+      const results = await Promise.all(chunk.map((id) => client().rpc("set_student_trash_state", { p_id: id, p_restore: false })));
+      const failed = results.find((result) => result.error)?.error;
+      if (failed) throw friendlyError(failed);
+    }
     notifyStudentsUpdated();
   },
 
