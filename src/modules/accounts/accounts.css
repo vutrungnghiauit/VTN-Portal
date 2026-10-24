@@ -41,6 +41,8 @@
 .accounts-quick-actions { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
 .accounts-quick-actions button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 1px solid #dce3ee; border-radius: 6px; background: #fff; color: #334155; cursor: pointer; }
 .accounts-quick-actions button:hover { border-color: #a8b8d5; background: #f5f8ff; }
+.accounts-quick-actions button.accounts-activate-button { width: auto; gap: 5px; padding: 0 8px; border-color: #b7e4ce; background: #effaf3; color: #167047; font-size: 12px; font-weight: 650; }
+.accounts-quick-actions button.accounts-activate-button:hover { border-color: #70c494; background: #e4f7eb; }
 .accounts-quick-actions button.accounts-danger { color: #b42318; border-color: #fecaca; }
 .accounts-quick-actions button.accounts-danger:hover { background: #fff1f0; }
 .accounts-modal-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 20px; background: #0f172a80; }
