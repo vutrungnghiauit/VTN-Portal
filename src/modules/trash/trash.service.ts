@@ -12,6 +12,11 @@ export const systemTrashService = {
     if (error) throw error;
     return (data ?? []) as SystemTrashEntry[];
   },
+  async listByEntityType(entityType: string): Promise<SystemTrashEntry[]> {
+    const { data, error } = await client().rpc("list_system_trash_by_type", { p_entity_type: entityType });
+    if (error) throw error;
+    return (data ?? []) as SystemTrashEntry[];
+  },
   async setState(entityType: string, entityId: string, restore: boolean) {
     if (entityType === "user_profiles") {
       const { data, error } = await client().functions.invoke("swift-api", { body: { action: restore ? "restore-account" : "delete", userId: entityId } });
