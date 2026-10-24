@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { CalendarDays, ChevronDown, Database, Download, Edit3, Eye, FileUp, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { workspaceService, type WorkspaceRecord } from "../workspace/workspace.service";
+import { syncRelatedCourseSectionMetadata } from "../workspace/course-section-sync";
 import { settingsService } from "../settings/settings.service";
 import { normalizeLecturer } from "../../lib/lecturer-format";
 import { academicPeriodMatchesYear, academicYearFromSemester, formatSemesterLabel, groupAcademicPeriods, normalizeAcademicYear, normalizeSemesterName, semesterLabelIdentity, semesterMatchesSelection, uniqueAcademicYears } from "../../lib/semester-groups";
+import { hasUserSelectedAcademicPeriod, markAcademicPeriodSelectedByUser, useCurrentAcademicPeriod } from "../../lib/current-academic-period";
 import SpreadsheetTransferPanel, { type SpreadsheetValue } from "../workspace/SpreadsheetTransferPanel";
 import QuickFilterHeading from "../workspace/QuickFilterHeading";
 import SearchableFilter from "../../components/SearchableFilter";
@@ -107,6 +109,7 @@ export default function TimetablePage({ canCreate, canUpdate, canDelete, canImpo
   const [storedRows, setStoredRows] = useState<WorkspaceRecord[]>([]);
   const [semester, setSemester] = useState(selectedInitial);
   const [academicYearFilter, setAcademicYearFilter] = useState("all");
+  const currentAcademicPeriod = useCurrentAcademicPeriod();
   const [search, setSearch] = useState("");
   const [subjectFilter, setSubjectFilter] = useState("");
   const [expectedClassFilter, setExpectedClassFilter] = useState("");
@@ -131,6 +134,11 @@ export default function TimetablePage({ canCreate, canUpdate, canDelete, canImpo
     finally { setLoading(false); }
   }, []);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!currentAcademicPeriod || hasUserSelectedAcademicPeriod('timetables')) return;
+    setAcademicYearFilter(currentAcademicPeriod.academicYear || "all");
+    setSemester(currentAcademicPeriod.semesterName);
+  }, [currentAcademicPeriod]);
   useEffect(() => {
     const update = (event: Event) => { const value = (event as CustomEvent<string>).detail || "all"; setSemester(value === "all" ? value : normalizeSemesterName(value)); setTablePage(1); setSelectedTimetableIds(new Set()); };
     window.addEventListener("vtn-semester-filter-changed", update);
@@ -177,6 +185,7 @@ export default function TimetablePage({ canCreate, canUpdate, canDelete, canImpo
   const tableColumnCount = 19 + weekColumns.length;
 
   function chooseAcademicYear(value: string) {
+    markAcademicPeriodSelectedByUser('timetables');
     const validTerms = value === "all" ? [] : semesterGroups.find((group) => normalizeAcademicYear(group.academicYear) === normalizeAcademicYear(value))?.semesters ?? [];
     const selectedSemesterYear = academicYearFromSemester(semester);
     const nextSemester = semester !== "all" && value !== "all" && (!validTerms.some((term) => semesterLabelIdentity(term) === semesterLabelIdentity(semester)) || (selectedSemesterYear && normalizeAcademicYear(selectedSemesterYear) !== normalizeAcademicYear(value))) ? "all" : semester;
@@ -223,6 +232,13 @@ export default function TimetablePage({ canCreate, canUpdate, canDelete, canImpo
         return { values: data, externalId: row.id };
       });
       await workspaceService.saveMany("timetables", timetableRows);
+      const syncedSections = new Set<string>();
+      for (const row of timetableRows) {
+        const syncKey = `${String(row.values.courseCode ?? "").toLocaleLowerCase("vi-VN")}|${String(row.values.semesterName ?? "").toLocaleLowerCase("vi-VN")}`;
+        if (syncedSections.has(syncKey) || syncKey === "|") continue;
+        syncedSections.add(syncKey);
+        await syncRelatedCourseSectionMetadata("timetables", undefined, row.values, false);
+      }
       setNotice("\u0110\u00e3 \u0111\u1ed3ng b\u1ed9 th\u1eddi kh\u00f3a bi\u1ec3u v\u1edbi danh m\u1ee5c h\u1ecdc k\u1ef3 v\u00e0 n\u0103m h\u1ecdc.");
       await load();
       notifyTimetableChanged();
@@ -237,6 +253,7 @@ export default function TimetablePage({ canCreate, canUpdate, canDelete, canImpo
     if (!valid.length) throw new Error("Cần có Mã LHP, Tên môn học, Lớp dự kiến và Học kỳ.");
     const existing = storedRows;
     const pending: Array<{ values: Record<string, string | number | null>; externalId: string }> = [];
+    const relatedMetadata = new Map<string, { before?: WorkspaceRecord["data"]; after: WorkspaceRecord["data"] }>();
     const seen = new Set<string>(); let processed = 0;
     for (const item of valid) {
       const semesterName = String(item.semesterName); const match = semesterName.match(/(?:HK|Học kỳ)\s*(\d+)/i);
@@ -255,10 +272,12 @@ export default function TimetablePage({ canCreate, canUpdate, canDelete, canImpo
       const externalId = seedMatch?.id ?? `spreadsheet-timetable:${encodeURIComponent(naturalKey)}`;
       const found = existing.find((record) => record.external_id === externalId || (String(record.data.semesterName ?? "") === row.semesterName && String(record.data.courseCode ?? "") === row.courseCode && String(record.data.classCode ?? "") === row.classCode && String(record.data.weekday ?? "") === row.weekday && String(record.data.periods ?? "") === row.periods));
       const values: Record<string, string | number | null> = { ...row, id: externalId, sourceId: externalId, weekNumbers: weekNumbers.join(",") };
-      if (found) { if (found.deleted_at) await workspaceService.restore(found.id); await workspaceService.save("timetables", values, found.id, externalId); }
-      else pending.push({ values, externalId });
+      if (found) { if (found.deleted_at) await workspaceService.restore(found.id); const saved = await workspaceService.save("timetables", values, found.id, externalId); relatedMetadata.set(`${row.courseCode.toLocaleLowerCase("vi-VN")}|${row.semesterName.toLocaleLowerCase("vi-VN")}`, { before: found.data, after: saved.data }); }
+      else { pending.push({ values, externalId }); relatedMetadata.set(`${row.courseCode.toLocaleLowerCase("vi-VN")}|${row.semesterName.toLocaleLowerCase("vi-VN")}`, { after: values }); }
     }
-    await workspaceService.saveMany("timetables", pending); setNotice(`Đã nhập/cập nhật ${processed} dòng thời khóa biểu.`); await load(); notifyTimetableChanged();
+    await workspaceService.saveMany("timetables", pending);
+    for (const change of relatedMetadata.values()) await syncRelatedCourseSectionMetadata("timetables", change.before, change.after, false);
+    setNotice(`Đã nhập/cập nhật ${processed} dòng thời khóa biểu.`); await load(); notifyTimetableChanged();
   }
 
   async function saveTimetableForm(event: FormEvent<HTMLFormElement>) {
@@ -270,7 +289,7 @@ export default function TimetablePage({ canCreate, canUpdate, canDelete, canImpo
     const semesterName = String(values.semesterName); const termNumber = Number(semesterName.match(/(?:HK|Học kỳ)\s*(\d+)/i)?.[1] ?? 0);
     const id = editing?.id || `manual-timetable:${encodeURIComponent(`${semesterName}|${values.courseCode}|${values.classCode}|${values.weekday ?? ""}|${values.periods ?? ""}`)}`;
     const stored = { ...values, semesterNumber: termNumber, id, sourceId: id, weekNumbers: rawWeeks.join(",") };
-    try { const found = storedRows.find((record) => !record.deleted_at && (record.external_id === id || String(record.data.sourceId ?? "") === editing?.id)); await workspaceService.save("timetables", stored, found?.id, id); setShowForm(false); setEditing(null); setNotice(editing ? "Đã cập nhật dòng thời khóa biểu." : "Đã thêm dòng thời khóa biểu."); await load(); notifyTimetableChanged(); }
+    try { const found = storedRows.find((record) => !record.deleted_at && (record.external_id === id || String(record.data.sourceId ?? "") === editing?.id)); const saved = await workspaceService.save("timetables", stored, found?.id, id); await syncRelatedCourseSectionMetadata("timetables", found?.data, saved.data); setShowForm(false); setEditing(null); setNotice(editing ? "Đã cập nhật dòng thời khóa biểu." : "Đã thêm dòng thời khóa biểu."); await load(); notifyTimetableChanged(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Không lưu được dòng thời khóa biểu."); }
   }
 
@@ -333,7 +352,7 @@ export default function TimetablePage({ canCreate, canUpdate, canDelete, canImpo
       <button type="button" disabled={!canSyncPeriods || importing || loading} onClick={() => void syncAllPeriods()}><RefreshCw size={15} /> Đồng bộ toàn bộ học kỳ/năm</button>
     </>} />
     {showForm && <div className="workspace-record-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { setShowForm(false); setEditing(null); } }}><form className="workspace-form workspace-record-modal" role="dialog" aria-modal="true" aria-labelledby="timetable-form-title" onSubmit={(event) => void saveTimetableForm(event)}><div className="workspace-form-head"><h2 id="timetable-form-title">{editing ? "Sửa lịch học" : "Thêm lịch học"}</h2><button type="button" onClick={() => { setShowForm(false); setEditing(null); }}>Đóng</button></div><div className="workspace-form-grid">{timetableFields.map((field) => <label key={field.key} className={field.key === "notes" ? "workspace-span" : ""}>{field.label}<input name={field.key} type={field.kind ?? "text"} step={field.kind === "number" ? "any" : undefined} required={field.required} defaultValue={field.key === "weekNumbers" ? (editing?.weekNumbers.join(", ") ?? "") : String(editing?.[field.key as keyof TimetableEntry] ?? "")} /></label>)}</div><div className="workspace-form-actions"><button className="workspace-primary">Lưu</button><button type="button" onClick={() => { setShowForm(false); setEditing(null); }}>Hủy</button></div></form></div>}
-     <div className="workspace-panel timetable-toolbar"><QuickFilterHeading onClear={() => { setSearch(""); setSubjectFilter(""); setExpectedClassFilter(""); setAcademicYearFilter("all"); setSemester("all"); setTablePage(1); setSelectedTimetableIds(new Set()); localStorage.setItem("vtn-active-semester", "all"); window.dispatchEvent(new CustomEvent("vtn-semester-filter-changed", { detail: "all" })); }} clearDisabled={semester === "all" && academicYearFilter === "all" && !search && !subjectFilter && !expectedClassFilter} /><label>Năm học<SearchableFilter value={academicYearFilter} allValue="all" allLabel="Tất cả năm học" options={academicYearOptions.map((year) => ({ value: year, label: year }))} onChange={chooseAcademicYear} /></label><label>Học kỳ<SearchableFilter value={semester} allValue="all" allLabel="Tất cả học kỳ" options={[...(semester !== "all" && !visibleSemesterGroups.some((group) => group.semesters.includes(semester)) ? [{ value: semester, label: semester }] : []), ...visibleSemesterGroups.flatMap((group) => group.semesters.map((name) => ({ value: name, label: name })))]} onChange={(rawValue) => { const value = rawValue === "all" ? rawValue : normalizeSemesterName(rawValue); setSemester(value); setTablePage(1); setSelectedTimetableIds(new Set()); localStorage.setItem("vtn-active-semester", value); window.dispatchEvent(new CustomEvent("vtn-semester-filter-changed", { detail: value })); }} /></label><label>Tên môn học<SearchableFilter value={subjectFilter} allValue="" allLabel="Tất cả môn học" options={subjectOptions.map((subject) => ({ value: subject, label: subject }))} onChange={(value) => { setSubjectFilter(value); setTablePage(1); setSelectedTimetableIds(new Set()); }} /></label><label>Lớp dự kiến<SearchableFilter value={expectedClassFilter} allValue="" allLabel="Tất cả lớp" options={expectedClassOptions.map((classCode) => ({ value: classCode, label: classCode }))} onChange={(value) => { setExpectedClassFilter(value); setTablePage(1); setSelectedTimetableIds(new Set()); }} /></label><label className="timetable-search">Tìm môn, mã lớp, phòng<input value={search} onChange={(event) => { setSearch(event.target.value); setTablePage(1); setSelectedTimetableIds(new Set()); }} placeholder="Ví dụ: Khởi nghiệp, 23DQT1A, L.511" /></label></div>
+     <div className="workspace-panel timetable-toolbar"><QuickFilterHeading onClear={() => { markAcademicPeriodSelectedByUser('timetables'); setSearch(""); setSubjectFilter(""); setExpectedClassFilter(""); setAcademicYearFilter("all"); setSemester("all"); setTablePage(1); setSelectedTimetableIds(new Set()); localStorage.setItem("vtn-active-semester", "all"); window.dispatchEvent(new CustomEvent("vtn-semester-filter-changed", { detail: "all" })); }} clearDisabled={semester === "all" && academicYearFilter === "all" && !search && !subjectFilter && !expectedClassFilter} /><label>Năm học<SearchableFilter value={academicYearFilter} allValue="all" allLabel="Tất cả năm học" options={academicYearOptions.map((year) => ({ value: year, label: year }))} onChange={chooseAcademicYear} /></label><label>Học kỳ<SearchableFilter value={semester} allValue="all" allLabel="Tất cả học kỳ" options={[...(semester !== "all" && !visibleSemesterGroups.some((group) => group.semesters.includes(semester)) ? [{ value: semester, label: semester }] : []), ...visibleSemesterGroups.flatMap((group) => group.semesters.map((name) => ({ value: name, label: name })))]} onChange={(rawValue) => { markAcademicPeriodSelectedByUser('timetables'); const value = rawValue === "all" ? rawValue : normalizeSemesterName(rawValue); setSemester(value); setTablePage(1); setSelectedTimetableIds(new Set()); localStorage.setItem("vtn-active-semester", value); window.dispatchEvent(new CustomEvent("vtn-semester-filter-changed", { detail: value })); }} /></label><label>Tên môn học<SearchableFilter value={subjectFilter} allValue="" allLabel="Tất cả môn học" options={subjectOptions.map((subject) => ({ value: subject, label: subject }))} onChange={(value) => { setSubjectFilter(value); setTablePage(1); setSelectedTimetableIds(new Set()); }} /></label><label>Lớp dự kiến<SearchableFilter value={expectedClassFilter} allValue="" allLabel="Tất cả lớp" options={expectedClassOptions.map((classCode) => ({ value: classCode, label: classCode }))} onChange={(value) => { setExpectedClassFilter(value); setTablePage(1); setSelectedTimetableIds(new Set()); }} /></label><label className="timetable-search">Tìm môn, mã lớp, phòng<input value={search} onChange={(event) => { setSearch(event.target.value); setTablePage(1); setSelectedTimetableIds(new Set()); }} placeholder="Ví dụ: Khởi nghiệp, 23DQT1A, L.511" /></label></div>
     {(canViewList || canViewWeek) && <div className="timetable-view-tabs" role="tablist" aria-label="Cách xem thời khóa biểu">{canViewList && <button type="button" role="tab" aria-selected={activeView === "list"} className={activeView === "list" ? "active" : ""} onClick={() => setView("list")}>Danh sách</button>}{canViewWeek && <button type="button" role="tab" aria-selected={activeView === "week"} className={activeView === "week" ? "active" : ""} onClick={() => setView("week")}>Xem theo tuần</button>}</div>}
     {activeView === "none" && <div className="workspace-panel">Bạn chưa được cấp quyền xem các tab của thời khóa biểu.</div>}
     {activeView === "week" && loading && <p className="workspace-muted">Đang tải thời khóa biểu…</p>}
