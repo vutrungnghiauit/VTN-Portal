@@ -65,6 +65,7 @@ const resourceActions: Record<string, PermissionResource["actions"]> = {
   semesters: ["read", "create", "update", "delete", "restore", "import", "export"],
   timetables: ["read", "create", "update", "delete", "restore", "import", "export"],
   "student-records": ["read", "create", "update", "delete", "restore", "import", "export"],
+  "course-sections": ["read", "create", "update", "delete", "restore", "import", "export"],
   groups: ["read", "create"],
   "teaching-plans": ["read", "create", "update", "delete", "restore", "import", "export"],
   calendar: ["read", "create", "update", "delete", "restore", "import", "export"],
