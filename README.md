@@ -3,7 +3,7 @@
 ## Cài đặt
 
 1. Tạo `.env.local` từ `.env.example` và điền Supabase Project URL cùng publishable key. Không đưa secret key vào mã chạy trên trình duyệt.
-2. Trong Supabase SQL Editor, chạy lần lượt `supabase/students.sql`, `supabase/workspace.sql`, `supabase/security.sql`, `supabase/system-settings.sql`, `supabase/notifications.sql`, `supabase/audit.sql`, `supabase/trash-retention.sql`, `supabase/student-analytics.sql`, `supabase/support-tickets.sql`, `supabase/semester-sync.sql`, `supabase/super-admin-delete.sql`, `supabase/rbac-actions.sql`, rồi `supabase/source-data.sql`.
+2. Trong Supabase SQL Editor, chạy lần lượt `supabase/students.sql`, `supabase/workspace.sql`, `supabase/security.sql`, `supabase/system-settings.sql`, `supabase/notifications.sql`, `supabase/audit.sql`, `supabase/trash-retention.sql`, `supabase/student-analytics.sql`, `supabase/support-tickets.sql`, `supabase/semester-sync.sql`, `supabase/super-admin-delete.sql`, `supabase/rbac-actions.sql`, `supabase/course-sections.sql`, rồi `supabase/source-data.sql`.
 3. Mời hoặc tạo người dùng tại **Authentication → Users**, rồi đăng nhập tại ứng dụng.
 4. Chạy `npm run dev`.
 
