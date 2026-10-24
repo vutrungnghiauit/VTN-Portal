@@ -16,6 +16,7 @@ type RosterFields = {
   registrationStatus: string;
   tuitionStatus: string;
   registrationDate: string;
+  groupName: string;
   courseClassCode: string;
   courseClassName: string;
   courseCode: string;
@@ -72,6 +73,7 @@ function getInitial(student?: Student) {
     registrationStatus: field("registrationStatus", "registrationStatus", "trang thai dang ky lhp", "trang thai dang ky"),
     tuitionStatus: field("tuitionStatus", "tuitionStatus", "hoc phi"),
     registrationDate: toDateInput(field("registrationDate", "registrationDate", "ngay dang ky")),
+    groupName: field("groupName", "groupName", "ten nhom", "nhom"),
     courseClassCode: field("", "courseClassCode", "ma lhp", "mã lhp"),
     courseClassName: field("", "courseClassName", "sourceClass", "lop hoc"),
     courseCode: field("", "courseCode", "subjectCode", "ma mon hoc", "mã môn học"),
@@ -119,11 +121,13 @@ export default function StudentForm({ student, onSave, onCancel }: StudentFormPr
             gender: roster.gender, citizenId: roster.citizenId, birthplace: roster.birthplace,
             registrationStatus: roster.registrationStatus,
             tuitionStatus: roster.tuitionStatus, registrationDate: roster.registrationDate,
+            groupName: roster.groupName,
             academicMajor: roster.major, major: roster.specialization,
           },
           sourceData: {
             ...existingSourceData,
             hoDem: roster.hoDem, ten: roster.ten, courseClassCode: roster.courseClassCode,
+            groupName: roster.groupName,
             courseClassName: roster.courseClassName, courseCode: roster.courseCode,
             courseName: roster.courseName, sourceTerm: roster.term, sourceAcademicYear: roster.academicYear,
             sourceFaculty: roster.major, sourceMajor: roster.specialization,
@@ -153,6 +157,7 @@ export default function StudentForm({ student, onSave, onCancel }: StudentFormPr
         {textField("Học phí", "tuitionStatus")}
         <label>Lớp sinh hoạt<input value={form.className} onChange={(event) => update("className", event.target.value)} /></label>
         <label>Ngày đăng ký<input type="date" value={roster.registrationDate} onChange={(event) => updateRoster("registrationDate", event.target.value)} /></label>
+        {textField("Tên nhóm", "groupName")}
       </div></div>
 
       <div className="student-form-section"><h3>Thông tin lớp học và đào tạo</h3><div className="student-form-grid">
