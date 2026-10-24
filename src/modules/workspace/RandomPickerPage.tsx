@@ -8,6 +8,7 @@ import { supabase } from "../../lib/supabase";
 import { randomPickerService, type RandomHistory, type RandomQuestionTopic } from "./random-picker.service";
 import RandomQuestionManager from "./RandomQuestionManager";
 import { academicPeriodMatchesYear, academicYearFromSemester, groupAcademicPeriods, normalizeAcademicYear, normalizeSemesterName, semesterMatchesSelection, uniqueAcademicYears } from "../../lib/semester-groups";
+import { hasUserSelectedAcademicPeriod, markAcademicPeriodSelectedByUser, useCurrentAcademicPeriod } from "../../lib/current-academic-period";
 import QuickFilterHeading from "./QuickFilterHeading";
 import SearchableFilter from "../../components/SearchableFilter";
 import "./workspace.css";
@@ -32,18 +33,18 @@ function studentField(student: Student, detailKey: string, ...sourceKeys: string
 function studentCourseClassCode(student: Student) {
   return studentField(student, "courseClassCode", "courseClassCode", "Mã lớp học phần", "Mã LHP", "ma lhp");
 }
-type RandomStudentFilters = { academicYear: string; semester: string; major: string; courseClassCode: string; course: string; className: string };
+type RandomStudentFilters = { academicYear: string; semester: string; groupName: string; courseClassCode: string; course: string; className: string };
 type RandomStudentFilterKey = keyof RandomStudentFilters;
 function matchesRandomStudentFilters(student: Student, filters: RandomStudentFilters, periods: Array<{ academicYear: string; semesterName: string }>) {
   const semester = studentField(student, "", "sourceTerm", "Đợt", "semester") || student.semesterName;
   const academicYear = studentField(student, "", "sourceAcademicYear", "Năm học", "academicYear");
   const className = studentField(student, "", "courseClassName") || studentField(student, "", "sourceClass", "Lớp học") || student.className;
-  const major = studentField(student, "academicMajor", "sourceFaculty", "Ngành") || student.faculty;
+  const groupName = studentField(student, "groupName", "groupName", "Tên nhóm", "ten nhom", "nhom") || student.className;
   const courseClassCode = studentCourseClassCode(student);
   const course = studentField(student, "courseName", "courseName", "subjectName", "Tên học phần", "Tên môn học", "ten hoc phan", "ten mon hoc");
   return (filters.academicYear === "all" || academicPeriodMatchesYear(semester, academicYear, filters.academicYear, periods))
     && (filters.semester === "all" || semesterMatchesSelection(semester, academicYear, filters.semester))
-    && (filters.major === "all" || normalizeFilterText(major) === normalizeFilterText(filters.major))
+    && (filters.groupName === "all" || normalizeFilterText(groupName) === normalizeFilterText(filters.groupName))
     && (filters.courseClassCode === "all" || normalizeFilterText(courseClassCode) === normalizeFilterText(filters.courseClassCode))
     && (filters.course === "all" || normalizeFilterText(course) === normalizeFilterText(filters.course))
     && (filters.className === "all" || normalizeFilterText(className) === normalizeFilterText(filters.className));
@@ -207,8 +208,9 @@ export default function RandomPickerPage({ canCreate, canUpdate = false, canDele
   const historyDrawType = historyDrawTypeByTool[tool];
   const [search, setSearch] = useState("");
   const [semesterFilter, setSemesterFilter] = useState(() => { const saved = localStorage.getItem("vtn-active-semester") || "all"; return saved === "all" ? saved : normalizeSemesterName(saved); });
+  const currentAcademicPeriod = useCurrentAcademicPeriod();
   const [academicYearFilter, setAcademicYearFilter] = useState("all");
-  const [classFilter, setClassFilter] = useState("all"); const [majorFilter, setMajorFilter] = useState("all");
+  const [classFilter, setClassFilter] = useState("all"); const [groupNameFilter, setGroupNameFilter] = useState("all");
   const [courseClassCodeFilter, setCourseClassCodeFilter] = useState("all");
   const [courseFilter, setCourseFilter] = useState("all");
   const [draws, setDraws] = useState<Draw[]>([]); const [question, setQuestion] = useState(""); const [questionTopic, setQuestionTopic] = useState("Kinh tế số"); const [questionTopics, setQuestionTopics] = useState<RandomQuestionTopic[]>([]); const [questionBankError, setQuestionBankError] = useState(""); const [showQuestionManager, setShowQuestionManager] = useState(false); const [interactionResult, setInteractionResult] = useState<InteractionResult | null>(null); const [challengeSeconds, setChallengeSeconds] = useState(0);
@@ -263,9 +265,9 @@ export default function RandomPickerPage({ canCreate, canUpdate = false, canDele
     const semesterName = studentField(student, "", "sourceTerm", "semester") || student.semesterName;
     return { academicYear: studentField(student, "", "sourceAcademicYear", "academicYear") || academicYearFromSemester(semesterName), semesterName };
   }).filter((period) => period.semesterName), [students]);
-  const activeFilters: RandomStudentFilters = { academicYear: academicYearFilter, semester: semesterFilter, major: majorFilter, courseClassCode: courseClassCodeFilter, course: courseFilter, className: classFilter };
+  const activeFilters: RandomStudentFilters = { academicYear: academicYearFilter, semester: semesterFilter, groupName: groupNameFilter, courseClassCode: courseClassCodeFilter, course: courseFilter, className: classFilter };
   const filterOptions = useMemo(() => {
-    const selectedFilters: RandomStudentFilters = { academicYear: academicYearFilter, semester: semesterFilter, major: majorFilter, courseClassCode: courseClassCodeFilter, course: courseFilter, className: classFilter };
+    const selectedFilters: RandomStudentFilters = { academicYear: academicYearFilter, semester: semesterFilter, groupName: groupNameFilter, courseClassCode: courseClassCodeFilter, course: courseFilter, className: classFilter };
     const candidatesFor = (excluded: RandomStudentFilterKey) => students.filter((student) => matchesRandomStudentFilters(student, { ...selectedFilters, [excluded]: "all" }, studentAcademicPeriods));
     const distinct = (values: string[]) => [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "vi", { numeric: true, sensitivity: "base" }));
     const semesterCandidates = candidatesFor("semester").map((student) => {
@@ -280,10 +282,10 @@ export default function RandomPickerPage({ canCreate, canUpdate = false, canDele
       semesterGroups: groupAcademicPeriods(semesterCandidates),
       courseClassCodes: distinct(candidatesFor("courseClassCode").map(studentCourseClassCode)),
       classes: distinct(candidatesFor("className").map((student) => studentField(student, "", "courseClassName") || studentField(student, "", "sourceClass", "Lớp học") || student.className)),
-      majors: distinct(candidatesFor("major").map((student) => studentField(student, "academicMajor", "sourceFaculty", "Ngành") || student.faculty)),
+      groupNames: distinct(candidatesFor("groupName").map((student) => studentField(student, "groupName", "groupName", "Tên nhóm", "ten nhom", "nhom") || student.className)),
       courses: distinct(candidatesFor("course").map((student) => studentField(student, "courseName", "courseName", "subjectName", "Tên học phần", "Tên môn học", "ten hoc phan", "ten mon hoc"))),
     };
-  }, [students, studentAcademicPeriods, academicYearFilter, semesterFilter, majorFilter, courseClassCodeFilter, courseFilter, classFilter]);
+  }, [students, studentAcademicPeriods, academicYearFilter, semesterFilter, groupNameFilter, courseClassCodeFilter, courseFilter, classFilter]);
   const visibleSemesterGroups = academicYearFilter === "all" ? filterOptions.semesterGroups : filterOptions.semesterGroups.filter((group) => normalizeAcademicYear(group.academicYear) === normalizeAcademicYear(academicYearFilter));
   const academicYearOptions = filterOptions.academicYears;
   const filteredStudents = useMemo(() => {
@@ -294,18 +296,18 @@ export default function RandomPickerPage({ canCreate, canUpdate = false, canDele
       const term = studentField(student, "", "sourceTerm", "Đợt", "semester") || student.semesterName;
       const year = studentField(student, "", "sourceAcademicYear", "Năm học", "academicYear");
       const className = studentField(student, "", "courseClassName") || studentField(student, "", "sourceClass", "Lớp học") || student.className;
-      const major = studentField(student, "academicMajor", "sourceFaculty", "Ngành") || student.faculty;
+      const groupName = studentField(student, "groupName", "groupName", "Tên nhóm", "ten nhom", "nhom") || student.className;
       const courseClassCode = studentCourseClassCode(student);
       const courseName = studentField(student, "courseName", "courseName", "subjectName", "Tên học phần", "Tên môn học", "ten hoc phan", "ten mon hoc");
       return (!keyword || searchable.includes(keyword))
         && (semesterFilter === "all" || semesterMatchesSelection(term, year, semesterFilter))
         && (academicYearFilter === "all" || academicPeriodMatchesYear(term, year, academicYearFilter, studentAcademicPeriods))
-        && (majorFilter === "all" || major === majorFilter)
+        && (groupNameFilter === "all" || normalizeFilterText(groupName) === normalizeFilterText(groupNameFilter))
         && (courseClassCodeFilter === "all" || normalizeFilterText(courseClassCode) === normalizeFilterText(courseClassCodeFilter))
         && (courseFilter === "all" || courseName === courseFilter)
         && (classFilter === "all" || className === classFilter);
     });
-  }, [students, search, semesterFilter, academicYearFilter, majorFilter, courseClassCodeFilter, courseFilter, classFilter, studentAcademicPeriods]);
+  }, [students, search, semesterFilter, academicYearFilter, groupNameFilter, courseClassCodeFilter, courseFilter, classFilter, studentAcademicPeriods]);
   const roster = useMemo(() => filteredStudents.map((item) => ({ id: item.id, code: item.studentCode, name: item.fullName })), [filteredStudents]);
   const manualRoster = useMemo<Array<{ id?: string; code?: string; name: string }>>(() => manualNames.split(/\r?\n/).map((name) => name.trim()).filter(Boolean).map((name) => ({ name })), [manualNames]);
   const participants = useManualRoster ? manualRoster : students.length ? roster : manualRoster;
@@ -354,18 +356,25 @@ export default function RandomPickerPage({ canCreate, canUpdate = false, canDele
     return () => { active = false; };
   }, [tool, history.length]);
 
-  useEffect(() => { setDraws([]); setQuestion(""); setWheelDegrees(0); }, [search, semesterFilter, academicYearFilter, majorFilter, courseClassCodeFilter, courseFilter, classFilter]);
+  useEffect(() => { setDraws([]); setQuestion(""); setWheelDegrees(0); }, [search, semesterFilter, academicYearFilter, groupNameFilter, courseClassCodeFilter, courseFilter, classFilter]);
+  useEffect(() => {
+    if (!currentAcademicPeriod || hasUserSelectedAcademicPeriod('random')) return;
+    setAcademicYearFilter(currentAcademicPeriod.academicYear || "all");
+    setSemesterFilter(currentAcademicPeriod.semesterName);
+  }, [currentAcademicPeriod]);
 
   function clearStudentFilters() {
-    setSearch(""); setSemesterFilter("all"); setAcademicYearFilter("all"); setClassFilter("all"); setMajorFilter("all"); setCourseClassCodeFilter("all"); setCourseFilter("all");
+    markAcademicPeriodSelectedByUser('random');
+    setSearch(""); setSemesterFilter("all"); setAcademicYearFilter("all"); setClassFilter("all"); setGroupNameFilter("all"); setCourseClassCodeFilter("all"); setCourseFilter("all");
     localStorage.setItem("vtn-active-semester", "all");
     window.dispatchEvent(new CustomEvent("vtn-semester-filter-changed", { detail: "all" }));
   }
 
   function changeStudentFilter(key: RandomStudentFilterKey, value: string) {
+    if (key === "academicYear" || key === "semester") markAcademicPeriodSelectedByUser('random');
     const normalizedValue = key === "semester" && value !== "all" ? normalizeSemesterName(value) : value;
     const nextFilters: RandomStudentFilters = { ...activeFilters, [key]: normalizedValue };
-    const order: RandomStudentFilterKey[] = ["academicYear", "semester", "major", "courseClassCode", "course", "className"];
+    const order: RandomStudentFilterKey[] = ["academicYear", "semester", "groupName", "courseClassCode", "course", "className"];
     const changedIndex = order.indexOf(key);
     for (const dependent of order.slice(changedIndex + 1)) {
       if (nextFilters[dependent] === "all") continue;
@@ -377,7 +386,7 @@ export default function RandomPickerPage({ canCreate, canUpdate = false, canDele
 
     setAcademicYearFilter(nextFilters.academicYear);
     setSemesterFilter(nextFilters.semester);
-    setMajorFilter(nextFilters.major);
+    setGroupNameFilter(nextFilters.groupName);
     setCourseClassCodeFilter(nextFilters.courseClassCode);
     setCourseFilter(nextFilters.course);
     setClassFilter(nextFilters.className);
@@ -597,10 +606,10 @@ export default function RandomPickerPage({ canCreate, canUpdate = false, canDele
     <div className={`random-suite-layout${canCreate ? "" : " is-readonly"}`}>{canCreate && <nav className="random-tool-tabs" aria-label="Công cụ bốc thăm">{tools.map((item) => <button type="button" key={item.id} className={tool === item.id ? "active" : ""} onClick={() => { historyRequestId.current += 1; setTool(item.id); setHistoryPage(1); setHistory([]); setHistoryTotal(0); setHistoryLoading(true); setSelectedHistoryIds(new Set()); setHistoryDetail(null); setDraws([]); setQuestion(""); setInteractionResult(null); setChallengeSeconds(0); if (challengeTimer.current) window.clearInterval(challengeTimer.current); setError(""); }}>{item.label}</button>)}</nav>}
       <div className="random-tool-content"><div className="random-tool-heading"><div><span>CÔNG CỤ TƯƠNG TÁC</span><h2>{tools.find((item) => item.id === tool)?.label}</h2><p>{tools.find((item) => item.id === tool)?.description}</p></div><Volume2 size={21} /></div>
         {canCreate ? <><section className="random-student-filters" aria-label="Bộ lọc sinh viên">
-  <QuickFilterHeading onClear={clearStudentFilters} clearDisabled={!search && semesterFilter === "all" && academicYearFilter === "all" && majorFilter === "all" && courseClassCodeFilter === "all" && courseFilter === "all" && classFilter === "all"} />
+  <QuickFilterHeading onClear={clearStudentFilters} clearDisabled={!search && semesterFilter === "all" && academicYearFilter === "all" && groupNameFilter === "all" && courseClassCodeFilter === "all" && courseFilter === "all" && classFilter === "all"} />
   <label>Năm học<SearchableFilter value={academicYearFilter} disabled={useManualRoster} allValue="all" allLabel="Tất cả năm học" options={[...new Set([...academicYearOptions, ...(academicYearFilter !== "all" ? [academicYearFilter] : [])])].map((item) => ({ value: item, label: item }))} onChange={(value) => changeStudentFilter("academicYear", value)} /></label>
   <label>Học kỳ<SearchableFilter value={semesterFilter} disabled={useManualRoster} allValue="all" allLabel="Tất cả học kỳ" options={[...(semesterFilter !== "all" && !visibleSemesterGroups.some((group) => group.semesters.includes(semesterFilter)) ? [{ value: semesterFilter, label: semesterFilter }] : []), ...visibleSemesterGroups.flatMap((group) => group.semesters.map((item) => ({ value: item, label: item })))]} onChange={(value) => changeStudentFilter("semester", value)} /></label>
-  <label>Ngành<SearchableFilter value={majorFilter} disabled={useManualRoster} allValue="all" allLabel="Tất cả ngành" options={filterOptions.majors.map((item) => ({ value: item, label: item }))} onChange={(value) => changeStudentFilter("major", value)} /></label>
+  <label>Tên nhóm<SearchableFilter value={groupNameFilter} disabled={useManualRoster} allValue="all" allLabel="Tất cả tên nhóm" options={filterOptions.groupNames.map((item) => ({ value: item, label: item }))} onChange={(value) => changeStudentFilter("groupName", value)} /></label>
   <label>Mã lớp học phần<SearchableFilter value={courseClassCodeFilter} disabled={useManualRoster} allValue="all" allLabel="Tất cả mã lớp học phần" options={filterOptions.courseClassCodes.map((item) => ({ value: item, label: item }))} onChange={(value) => changeStudentFilter("courseClassCode", value)} /></label>
   <label>Tên học phần<SearchableFilter value={courseFilter} disabled={useManualRoster} allValue="all" allLabel="Tất cả học phần" options={filterOptions.courses.map((item) => ({ value: item, label: item }))} onChange={(value) => changeStudentFilter("course", value)} /></label>
   <label>Lớp học<SearchableFilter value={classFilter} disabled={useManualRoster} allValue="all" allLabel="Tất cả lớp" options={filterOptions.classes.map((item) => ({ value: item, label: item }))} onChange={(value) => changeStudentFilter("className", value)} /></label>
