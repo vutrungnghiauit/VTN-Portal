@@ -465,7 +465,7 @@ export default function SystemModulePage({ module, role = "student", canTestPush
   const [permissionView, setPermissionView] = useState<"roles" | "users">("roles");
   const [permissionSearch, setPermissionSearch] = useState("");
   const [people, setPeople] = useState<Array<{ user_id: string; username: string | null; display_name: string; role_key: string }>>([]);
-  const [semesterFilter, setSemesterFilter] = useState(() => { const saved = localStorage.getItem("vtn-active-semester") || "all"; return saved === "all" ? saved : normalizeSemesterName(saved); });
+  const [semesterFilter, setSemesterFilter] = useState("all");
   const [currentSemester, setCurrentSemester] = useState("");
   const [semesterNames, setSemesterNames] = useState<string[]>([]);
   const [semesterPeriods, setSemesterPeriods] = useState<Array<{ title: string; startDate: string; endDate: string }>>([]);
@@ -535,7 +535,7 @@ export default function SystemModulePage({ module, role = "student", canTestPush
             if (permissions.delete) void scanExpiredTrash(false);
           }
         } else if (module.key === "audit-logs") {
-          const [logs, trashEntries, { data: access, error: accessError }] = await Promise.all([auditLogService.list(), permissions.restore ? systemTrashService.list() : Promise.resolve([]), supabase.rpc("get_my_access_matrix")]);
+          const [logs, trashEntries, { data: access, error: accessError }] = await Promise.all([auditLogService.list(), permissions.restore ? systemTrashService.listByEntityType("system_audit_logs") : Promise.resolve([]), supabase.rpc("get_my_access_matrix")]);
           if (accessError) throw accessError;
           const actorIds = [...new Set(logs.map((log) => log.actor_id).filter((id): id is string => Boolean(id)))];
           let users: Array<{ user_id: string; username: string | null; display_name: string; role_key: string }> = [];
@@ -594,7 +594,15 @@ export default function SystemModulePage({ module, role = "student", canTestPush
     window.addEventListener("vtn-students-updated", refreshStudents);
     return () => { active = false; window.removeEventListener("vtn-students-updated", refreshStudents); };
   }, [module.key]);
-  useEffect(() => { const update = (event: Event) => setSemesterFilter((event as CustomEvent<string>).detail || "all"); window.addEventListener("vtn-semester-filter-changed", update); return () => window.removeEventListener("vtn-semester-filter-changed", update); }, []);
+  useEffect(() => {
+    if (module.key === "dashboard") {
+      setSemesterFilter("all");
+      return;
+    }
+    const update = (event: Event) => setSemesterFilter((event as CustomEvent<string>).detail || "all");
+    window.addEventListener("vtn-semester-filter-changed", update);
+    return () => window.removeEventListener("vtn-semester-filter-changed", update);
+  }, [module.key]);
 
   async function exportBackup() {
     if (!permissions.export) return;
@@ -897,7 +905,7 @@ export default function SystemModulePage({ module, role = "student", canTestPush
     setAuditLogs((previous) => previous.filter((item) => item.id !== log.id));
     setSelectedAuditLogIds((previous) => { const next = new Set(previous); next.delete(log.id); return next; });
     setSelectedAuditLog(undefined);
-    if (permissions.restore) setAuditTrashEntries((await systemTrashService.list()).filter((entry) => entry.entity_type === "system_audit_logs"));
+    if (permissions.restore) setAuditTrashEntries(await systemTrashService.listByEntityType("system_audit_logs"));
     setNotice("Đã chuyển dòng nhật ký vào thùng rác.");
   }
   async function clearAuditLogs() {
@@ -905,7 +913,7 @@ export default function SystemModulePage({ module, role = "student", canTestPush
     if (!window.confirm("Chuyển toàn bộ nhật ký hệ thống vào thùng rác?")) return;
     const { data, error: clearError } = await supabase.rpc("super_admin_clear_audit_logs");
     if (clearError) { setError(clearError.message); return; }
-    if (permissions.restore) setAuditTrashEntries((await systemTrashService.list()).filter((entry) => entry.entity_type === "system_audit_logs"));
+    if (permissions.restore) setAuditTrashEntries(await systemTrashService.listByEntityType("system_audit_logs"));
     setAuditLogs([]); setAuditUser(""); setSelectedAuditLog(undefined); setSelectedAuditLogIds(new Set()); setAuditPage(1);
     setNotice(`Đã chuyển ${Number(data ?? 0)} dòng nhật ký vào thùng rác.`);
   }
@@ -914,9 +922,9 @@ export default function SystemModulePage({ module, role = "student", canTestPush
     if (!permissions.restore || entry.entity_type !== "system_audit_logs") return;
     try {
       await systemTrashService.setState(entry.entity_type, entry.entity_id, true);
-      const [logs, trashEntries] = await Promise.all([auditLogService.list(), systemTrashService.list()]);
+      const [logs, trashEntries] = await Promise.all([auditLogService.list(), systemTrashService.listByEntityType("system_audit_logs")]);
       setAuditLogs(logs);
-      setAuditTrashEntries(trashEntries.filter((item) => item.entity_type === "system_audit_logs"));
+      setAuditTrashEntries(trashEntries);
       setNotice(`Đã khôi phục nhật ký “${entry.record_label || `log_${entry.entity_id}`}”.`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Không thể khôi phục nhật ký.");
@@ -999,8 +1007,6 @@ export default function SystemModulePage({ module, role = "student", canTestPush
   function applySemesterFilter(value: string) {
     const normalizedValue = value === "all" ? value : normalizeSemesterName(value);
     setSemesterFilter(normalizedValue);
-    localStorage.setItem("vtn-active-semester", normalizedValue);
-    window.dispatchEvent(new CustomEvent("vtn-semester-filter-changed", { detail: normalizedValue }));
   }
   const filteredCounts = filteredWorkspaceRecords.reduce<Record<string, number>>((result, row) => { result[row.module_key] = (result[row.module_key] ?? 0) + 1; return result; }, {});
   const timetableSections = new Map<string, { semester: string; courseCode: string }>();
