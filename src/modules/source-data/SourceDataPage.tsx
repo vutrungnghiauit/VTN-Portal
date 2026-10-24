@@ -14,6 +14,7 @@ import { progressRowsFromRecognizedText } from "../workspace/teaching-plan-progr
 import QuickFilterHeading from "../workspace/QuickFilterHeading";
 import SearchableFilter from "../../components/SearchableFilter";
 import { academicYearFromSemester, formatSemesterLabel, groupAcademicPeriods, normalizeAcademicYear, uniqueAcademicYears } from "../../lib/semester-groups";
+import { hasUserSelectedAcademicPeriod, markAcademicPeriodSelectedByUser, useCurrentAcademicPeriod } from "../../lib/current-academic-period";
 import "../workspace/workspace.css";
 import "./source-data.css";
 
@@ -481,6 +482,7 @@ export default function SourceDataPage({ permissions, superAdmin = false }: { pe
   const [files, setFiles] = useState<File[]>([]);
   const [uploadClassification, setUploadClassification] = useState({ moduleKey: "", academicYear: "", semesterName: "" });
   const [sourceFilters, setSourceFilters] = useState({ academicYear: "", semesterName: "", moduleKey: "", fileName: "", search: "" });
+  const currentAcademicPeriod = useCurrentAcademicPeriod();
   const [searchDraft, setSearchDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -507,6 +509,10 @@ export default function SourceDataPage({ permissions, superAdmin = false }: { pe
     return canUpload && canManageCategory && (canDeleteFiles || isUploader(file));
   };
   const canDeleteFile = (file: StoredSourceFile) => canDeleteFiles || (canUpload && isUploader(file));
+  useEffect(() => {
+    if (!currentAcademicPeriod || hasUserSelectedAcademicPeriod('source-data')) return;
+    setSourceFilters((current) => ({ ...current, academicYear: currentAcademicPeriod.academicYear, semesterName: currentAcademicPeriod.semesterName }));
+  }, [currentAcademicPeriod?.academicYear, currentAcademicPeriod?.semesterName]);
   const selectedUploadSection = manageableSections.find((section) => section.key === uploadClassification.moduleKey);
   const selectedEditSection = manageableSections.find((section) => section.key === editClassification.moduleKey);
   const intakeSemesterOptions = semesterRecords
@@ -868,10 +874,10 @@ export default function SourceDataPage({ permissions, superAdmin = false }: { pe
     <section className="workspace-panel source-data-file-library">
       <div className="source-data-file-history-heading"><strong><CalendarDays size={16} /> Tệp nguồn đã lưu</strong><span>{filteredSourceFiles.length === sourceFiles.length ? `${sourceFiles.length} tệp` : `${filteredSourceFiles.length} / ${sourceFiles.length} tệp`}</span></div>
       <div className="workspace-filter-panel source-data-filter-panel" aria-label="Bộ lọc tệp nguồn">
-        <QuickFilterHeading subtitle="Lọc nhanh theo module, năm học, học kỳ, tệp nguồn" onClear={() => { setSourceFilters({ academicYear: "", semesterName: "", moduleKey: "", fileName: "", search: "" }); setSearchDraft(""); }} clearDisabled={!hasActiveSourceFilters} />
+        <QuickFilterHeading subtitle="Lọc nhanh theo module, năm học, học kỳ, tệp nguồn" onClear={() => { markAcademicPeriodSelectedByUser('source-data'); setSourceFilters({ academicYear: "", semesterName: "", moduleKey: "", fileName: "", search: "" }); setSearchDraft(""); }} clearDisabled={!hasActiveSourceFilters} />
         <div className="workspace-filter-controls source-data-filter-controls">
-          <label>Năm học<SearchableFilter value={sourceFilters.academicYear} disabled={!filterOptions.academicYear.length} allValue="" allLabel="Tất cả năm học" options={filterOptions.academicYear.map((year) => ({ value: year, label: year }))} onChange={(nextYear) => { const matchingTerms = sourceSemesterGroups.find((group) => normalizeAcademicYear(group.academicYear) === normalizeAcademicYear(nextYear))?.semesters ?? []; setSourceFilters((current) => ({ ...current, academicYear: nextYear, semesterName: current.semesterName && nextYear && (!matchingTerms.some((term) => semesterFilterIdentity(term) === semesterFilterIdentity(current.semesterName)) || (academicYearFromSemester(current.semesterName) && normalizeAcademicYear(academicYearFromSemester(current.semesterName)) !== normalizeAcademicYear(nextYear))) ? "" : current.semesterName })); }} /></label>
-          <label>Học kỳ<SearchableFilter value={sourceFilters.semesterName} disabled={!sourceSemesterOptions.length} allValue="" allLabel="Tất cả học kỳ" options={sourceSemesterOptions.map((semester) => ({ value: semester, label: semester }))} onChange={(value) => setSourceFilters((current) => ({ ...current, semesterName: value }))} /></label>
+          <label>Năm học<SearchableFilter value={sourceFilters.academicYear} disabled={!filterOptions.academicYear.length} allValue="" allLabel="Tất cả năm học" options={filterOptions.academicYear.map((year) => ({ value: year, label: year }))} onChange={(nextYear) => { markAcademicPeriodSelectedByUser('source-data'); const matchingTerms = sourceSemesterGroups.find((group) => normalizeAcademicYear(group.academicYear) === normalizeAcademicYear(nextYear))?.semesters ?? []; setSourceFilters((current) => ({ ...current, academicYear: nextYear, semesterName: current.semesterName && nextYear && (!matchingTerms.some((term) => semesterFilterIdentity(term) === semesterFilterIdentity(current.semesterName)) || (academicYearFromSemester(current.semesterName) && normalizeAcademicYear(academicYearFromSemester(current.semesterName)) !== normalizeAcademicYear(nextYear))) ? "" : current.semesterName })); }} /></label>
+          <label>Học kỳ<SearchableFilter value={sourceFilters.semesterName} disabled={!sourceSemesterOptions.length} allValue="" allLabel="Tất cả học kỳ" options={sourceSemesterOptions.map((semester) => ({ value: semester, label: semester }))} onChange={(value) => { markAcademicPeriodSelectedByUser('source-data'); setSourceFilters((current) => ({ ...current, semesterName: value })); }} /></label>
           <label>Module sử dụng<SearchableFilter value={sourceFilters.moduleKey} disabled={!filterOptions.module.length} allValue="" allLabel="Tất cả module" options={filterOptions.module.map((module) => ({ value: module.key, label: module.title }))} onChange={(value) => setSourceFilters((current) => ({ ...current, moduleKey: value }))} /></label>
           <label>Tệp nguồn<SearchableFilter value={sourceFilters.fileName} allValue="" allLabel="Tất cả tệp" options={filterOptions.fileName.map((fileName) => ({ value: fileName, label: fileName }))} onChange={(value) => setSourceFilters((current) => ({ ...current, fileName: value }))} /></label>
           <form className="source-data-filter-search-row" onSubmit={(event) => { event.preventDefault(); setSourceFilters((current) => ({ ...current, search: searchDraft })); }}>
