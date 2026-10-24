@@ -37,7 +37,7 @@ Deno.serve(async (request) => {
 
       let loginEmail = identifier.includes("@") ? identifier.toLowerCase() : "";
       if (!loginEmail && /^[A-Za-z0-9._-]{1,100}$/.test(identifier)) {
-        const { data: profile, error: profileError } = await admin.from("user_profiles").select("user_id").ilike("username", identifier).is("deleted_at", null).maybeSingle();
+        const { data: profile, error: profileError } = await admin.from("user_profiles").select("user_id").eq("username", identifier.toLowerCase()).is("deleted_at", null).maybeSingle();
         if (profileError) throw profileError;
         let userId: string | null = profile?.user_id ?? null;
         if (!userId) {
@@ -440,9 +440,12 @@ Deno.serve(async (request) => {
       const registrationStatus = status === "pending" ? "pending" : status === "rejected" ? "rejected" : "approved";
       const { error: profileUpdateError } = await admin.from("user_profiles").update({ registration_status: registrationStatus, updated_at: new Date().toISOString() }).eq("user_id", userId);
       if (profileUpdateError) throw profileUpdateError;
-      const { error: authUpdateError } = await admin.auth.admin.updateUserById(userId, { ban_duration: status === "rejected" || status === "locked" ? "876000h" : "none" });
+      const authAttributes = status === "active"
+        ? { ban_duration: "none", email_confirm: true }
+        : { ban_duration: status === "rejected" || status === "locked" ? "876000h" : "none" };
+      const { error: authUpdateError } = await admin.auth.admin.updateUserById(userId, authAttributes);
       if (authUpdateError) throw authUpdateError;
-      return json({ message: "Đã cập nhật trạng thái tài khoản." });
+      return json({ message: status === "active" ? "Đã kích hoạt tài khoản." : "Đã cập nhật trạng thái tài khoản." });
     }
     if (action === "approval") {
       const status = String(body.status ?? "");
